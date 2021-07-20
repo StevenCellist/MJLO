@@ -4,7 +4,6 @@ import time
 import ubinascii
 import array
 
-
 #Pycom imports.
 from machine import I2C
 from machine import UART
@@ -24,35 +23,36 @@ import tsl2591
 
 import settings
 
-
 app_eui = ubinascii.unhexlify(settings.APP_EUI)
 app_key = ubinascii.unhexlify(settings.APP_KEY)
-
 lora = LoRa(mode = settings.LORA_MODE, region = settings.LORA_REGION)
+
+#setup I2C bus and display
+bus_connection = I2C(0, I2C.MASTER)
+display = SSD1306_I2C(128, 64, bus_connection)
+
 if settings.DEBUG_MODE == False:
 # Make a connection to LoRa.
-
     lora.join(activation = LoRa.OTAA, auth = (app_eui, app_key), timeout = 0)
-
     while not lora.has_joined():
-        time.sleep(1)
+        display.fill(0)
+        display.text("Connecting...", 1, 1, 1)
         print('Connecting with LoRaWAN...')
+        time.sleep(1)
 
     print('Joined LoRaWAN')
+    display.fill(0)
+    display.text("Connected!", 1, 1, 1)
 
-    # Create a LoRa socket.
+# Create a LoRa socket.
 s = socket.socket(socket.AF_LORA, socket.SOCK_RAW)
 # Set the LoRaWAN data rate.
 s.setsockopt(socket.SOL_LORA, socket.SO_DR, 5)
 s.setblocking(True)
 
-
-
-#setup I2C bus
-bus_connection = I2C(0, I2C.MASTER)
 #initialize UART busses
-com = UART(1,  pins=("P20",  "P19"),  baudrate=9600)
-com2 = UART(2,  pins=("P3",  "P4"),  baudrate=9600)
+com = UART(1,  pins=("P20",  "P19"),  baudrate=9600)    # fine particle sensor
+com2 = UART(2,  pins=("P3",  "P4"),  baudrate=9600)     # GPS sensor
 
 time.sleep(1)
 #initialize sensor objects
@@ -60,12 +60,11 @@ dust_sensor = SDS011(com)
 gps = MicropyGPS()
 bme = bme280.BME280(i2c=bus_connection)
 MAX4466 = MAX4466()
-display = SSD1306_I2C(128, 64, bus_connection)
 UV_sensor = VEML6070(i2c=bus_connection)
 tsl = tsl2591.Tsl2591(i2c_bus = bus_connection)
 VOC_sensor = CCS811(i2c=bus_connection, addr=90)
 lpp = CayenneLPP(size = 110, sock = s)
-time.sleep(5)
+time.sleep(3)
 
 #setup voltage measuring
 adc = ADC()
@@ -74,7 +73,6 @@ apin = adc.channel(attn=3, pin = 'P16')
 def read_cycle(display_on = False):
     #this is the main function that reads all the sensors and transmits the results via LoRaWAN
     if display_on == True:
-        display = SSD1306_I2C(128, 64, bus_connection)
         display.text("Acquiring", 1, 1, 1)
         display.text("sensor data", 1, 15, 1)
         display.show()
@@ -97,18 +95,18 @@ def read_cycle(display_on = False):
 
     if settings.DEBUG_MODE == False:
         #create cayenne LPP packet
-        lpp.add_gps(gps.latitude, gps.longitude, gps.altitude, channel = 9)
-        lpp.add_barometric_pressure(pressure/100, channel = 2)
-        lpp.add_temperature(temperature, channel = 3) #temp
-        lpp.add_barometric_pressure(dust_sensor.pm25, channel = 4) #pm25 0.0-999.9 ug/m3 (2 bytes unsigned)# TODO: Find out if it is better to use unsigned fields for these
-        lpp.add_barometric_pressure(dust_sensor.pm10, channel=5)   #pm 10
-        lpp.add_luminosity(MAX4466.value(), channel=6)    #loudness 0-4096
-        lpp.add_luminosity(VOC_sensor.eCO2, channel = 7) #eCO2 in 400-8192 ppm
-        lpp.add_luminosity(VOC_sensor.tVOC, channel = 8) #TVOC from 0 to 1187 ppb
-        lpp.add_luminosity(UV_sensor.UVindex, channel = 1) #UV sensor2 byte unsigned
-        lpp.add_luminosity(lux, channel = 10) #lux 2 bytes unsinged
-        lpp.add_analog_input(voltage, channel = 11) #Voltage measurement, 2 bites with fractions
-        lpp.add_relative_humidity(humidity, channel = 12) #humidity 0-100%   #see this url: https://www.thethingsnetwork.org/forum/t/cayenne-lpp-format-analog-data-wrong/14676
+        lpp.add_luminosity(UVindex, channel = 0) #UV sensor2 byte unsigned
+        lpp.add_barometric_pressure(pressure/100, channel = 1)
+        lpp.add_temperature(temperature, channel = 2) #temp
+        lpp.add_barometric_pressure(dust_sensor.pm25, channel = 3) #pm25 0.0-999.9 ug/m3 (2 bytes unsigned)# TODO: Find out if it is better to use unsigned fields for these
+        lpp.add_barometric_pressure(dust_sensor.pm10, channel = 4)   #pm 10
+        lpp.add_luminosity(MAX4466.value(), channel = 5)    #loudness 0-4096
+        lpp.add_luminosity(VOC_sensor.eCO2, channel = 6) #eCO2 in 400-8192 ppm
+        lpp.add_luminosity(VOC_sensor.tVOC, channel = 7) #TVOC from 0 to 1187 ppb
+        lpp.add_luminosity(lux, channel = 8) #lux 2 bytes unsinged
+        lpp.add_analog_input(voltage, channel = 9) #Voltage measurement, 2 bites with fractions
+        lpp.add_relative_humidity(humidity, channel = 10) #humidity 0-100%   #see this url: https://www.thethingsnetwork.org/forum/t/cayenne-lpp-format-analog-data-wrong/14676
+        lpp.add_gps(gps.latitude, gps.longitude, gps.altitude, channel = 11)
     if settings.DEBUG_MODE == True:
         #print all of the sensor values via REPL (serial)
         print("GPS " + ' ' + str(gps.latitude) + ' ' + str(gps.longitude) + ' ' + str(gps.altitude))
@@ -171,7 +169,7 @@ def read_cycle(display_on = False):
         time.sleep(1)
         display.fill(0)
         display.text("Going to sleep", 1, 1, 1)
-        display.text("for 30 minutes", 1, 15, 1)
+        display.text("for 5 minutes", 1, 15, 1)
         display.show()
         time.sleep(1)
         display.poweroff() #reduce power consumption
@@ -185,7 +183,7 @@ dust_sensor.read()
 
 while True:
     dust_sensor.sleep()
-    read_cycle(display_on = False)
+    read_cycle(display_on = True)
     #main loop sleep time
     time.sleep(settings.MEASURE_INTERVAL-30)
 
