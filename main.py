@@ -95,17 +95,17 @@ def read_cycle(display_on = False):
 
     if settings.DEBUG_MODE == False:
         #create cayenne LPP packet
-        lpp.add_luminosity(UVindex, channel = 0) #UV sensor2 byte unsigned
-        lpp.add_barometric_pressure(pressure/100, channel = 1)
-        lpp.add_temperature(temperature, channel = 2) #temp
-        lpp.add_barometric_pressure(dust_sensor.pm25, channel = 3) #pm25 0.0-999.9 ug/m3 (2 bytes unsigned)# TODO: Find out if it is better to use unsigned fields for these
-        lpp.add_barometric_pressure(dust_sensor.pm10, channel = 4)   #pm 10
-        lpp.add_luminosity(MAX4466.value(), channel = 5)    #loudness 0-4096
-        lpp.add_luminosity(VOC_sensor.eCO2, channel = 6) #eCO2 in 400-8192 ppm
+        lpp.add_analog_input(voltage, channel = 0) #Voltage measurement, 2 bites with fractions
+        lpp.add_temperature(temperature, channel = 1) #temp
+        lpp.add_barometric_pressure(pressure/100, channel = 2)
+        lpp.add_relative_humidity(humidity, channel = 3) #humidity 0-100%   #see this url: https://www.thethingsnetwork.org/forum/t/cayenne-lpp-format-analog-data-wrong/14676
+        lpp.add_luminosity(MAX4466.value(), channel = 4)    #loudness 0-4096
+        lpp.add_luminosity(lux, channel = 5) #lux 2 bytes unsinged
+        lpp.add_luminosity(UVindex, channel = 6) #UV sensor2 byte unsigned
         lpp.add_luminosity(VOC_sensor.tVOC, channel = 7) #TVOC from 0 to 1187 ppb
-        lpp.add_luminosity(lux, channel = 8) #lux 2 bytes unsinged
-        lpp.add_analog_input(voltage, channel = 9) #Voltage measurement, 2 bites with fractions
-        lpp.add_relative_humidity(humidity, channel = 10) #humidity 0-100%   #see this url: https://www.thethingsnetwork.org/forum/t/cayenne-lpp-format-analog-data-wrong/14676
+        lpp.add_luminosity(VOC_sensor.eCO2, channel = 8) #eCO2 in 400-8192 ppm
+        lpp.add_barometric_pressure(dust_sensor.pm25, channel = 9) #pm25 0.0-999.9 ug/m3 (2 bytes unsigned)# TODO: Find out if it is better to use unsigned fields for these
+        lpp.add_barometric_pressure(dust_sensor.pm10, channel = 10)   #pm 10
         lpp.add_gps(gps.latitude, gps.longitude, gps.altitude, channel = 11)
     if settings.DEBUG_MODE == True:
         #print all of the sensor values via REPL (serial)
