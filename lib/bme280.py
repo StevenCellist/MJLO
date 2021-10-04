@@ -368,7 +368,7 @@ class Adafruit_BME280:
         raise NotImplementedError()
 
 
-class BME280_I2C(Adafruit_BME280):
+class BME280(Adafruit_BME280):
 
     def __init__(self, i2c, address=0x77):
 

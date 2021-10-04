@@ -1,4 +1,4 @@
-# MicroPython SSD1306 OLED driver, I2C and SPI interfaces
+# MicroPython SSD1306 OLED driver, I2C interface
 
 import time
 import framebuf
@@ -24,7 +24,7 @@ SET_VCOM_DESEL      = const(0xdb)
 SET_CHARGE_PUMP     = const(0x8d)
 
 
-class SSD1306:
+class SSD1306_DRIVER:
     def __init__(self, width, height, external_vcc):
         self.width = width
         self.height = height
@@ -104,7 +104,7 @@ class SSD1306:
         self.framebuf.text(string, x, y, col)
 
 
-class SSD1306_I2C(SSD1306):
+class SSD1306(SSD1306_DRIVER):
     def __init__(self, width, height, i2c, addr=0x3c, external_vcc=False):
         self.i2c = i2c
         self.addr = addr
@@ -128,41 +128,3 @@ class SSD1306_I2C(SSD1306):
         # Blast out the frame buffer using a single I2C transaction to support
         # hardware I2C interfaces.
         self.i2c.writeto(self.addr, self.buffer)
-
-
-class SSD1306_SPI(SSD1306):
-    def __init__(self, width, height, spi, dc, res, cs, external_vcc=False):
-        self.rate = 10 * 1024 * 1024
-        dc.init(dc.OUT, value=0)
-        res.init(res.OUT, value=0)
-        cs.init(cs.OUT, value=1)
-        self.spi = spi
-        self.dc = dc
-        self.res = res
-        self.cs = cs
-        self.buffer = bytearray((height // 8) * width)
-        self.framebuf = framebuf.FrameBuffer1(self.buffer, width, height)
-        super().__init__(width, height, external_vcc)
-
-    def write_cmd(self, cmd):
-        self.spi.init(baudrate=self.rate, polarity=0, phase=0)
-        self.cs.high()
-        self.dc.low()
-        self.cs.low()
-        self.spi.write(bytearray([cmd]))
-        self.cs.high()
-
-    def write_framebuf(self):
-        self.spi.init(baudrate=self.rate, polarity=0, phase=0)
-        self.cs.high()
-        self.dc.high()
-        self.cs.low()
-        self.spi.write(self.buffer)
-        self.cs.high()
-
-    def poweron(self):
-        self.res.high()
-        time.sleep_ms(1)
-        self.res.low()
-        time.sleep_ms(10)
-        self.res.high()
