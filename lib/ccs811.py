@@ -3,9 +3,9 @@ from machine import I2C
 class CCS811(object):
     """CCS811 gas sensor. Measures eCO2 in ppm and TVOC in ppb"""
 
-    def __init__(self, i2c=None, addr=90):
+    def __init__(self, i2c=None, address=90):
         self.i2c = i2c
-        self.addr = addr      # 0x5A = 90, 0x5B = 91
+        self.addr = address      # 0x5A = 90, 0x5B = 91
         self.tVOC = 0
         self.eCO2 = 0
         self.mode = 1       # Constant power mode; measurement every second
@@ -59,7 +59,7 @@ class CCS811(object):
         register[0] = HB
         register[1] = LB
         self.i2c.writeto_mem(self.addr,0x11,register)
-    
+
     def put_envdata(self,humidity,temp):
         envregister = bytearray([0x00,0x00,0x00,0x00])
         envregister[0] = int(humidity) << 1

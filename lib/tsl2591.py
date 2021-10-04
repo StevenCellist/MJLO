@@ -66,44 +66,46 @@ class SMBusEmulator:
         data = self.i2c.readfrom(addr, 4)
         return _bytes_to_int(data)
 
-SENSOR_ADDRESS=0x29
-
-class Tsl2591:
+class TSL2591:
     def __init__(
                  self,
-                 i2c_bus,
+                 i2c,
+                 address,
                  integration=INTEGRATIONTIME_100MS,
                  gain=GAIN_LOW
                  ):
-        self.i2c_bus = i2c_bus
-        self.bus = SMBusEmulator(i2c_bus)
+        self.i2c_bus = i2c
+        self.i2c_address = address
+        self.bus = SMBusEmulator(i2c)
         self.integration_time = integration
         self.gain = gain
         self.set_timing(self.integration_time)
         self.set_gain(self.gain)
-        self.disable()
+        self.sleep()
 
     def set_timing(self, integration):
-        self.enable()
+        self.wake()
         self.integration_time = integration
         self.bus.write_byte_data(
-                    SENSOR_ADDRESS,
+                    self.i2c_address,
                     COMMAND_BIT | REGISTER_CONTROL,
                     self.integration_time | self.gain
                     )
-        self.disable()
+        self.sleep()
 
     def set_gain(self, gain):
-        self.enable()
+        self.wake()
         self.gain = gain
         self.bus.write_byte_data(
-                    SENSOR_ADDRESS,
+                    self.i2c_address,
                     COMMAND_BIT | REGISTER_CONTROL,
                     self.integration_time | self.gain
                     )
-        self.disable()
+        self.sleep()
 
-    def calculate_lux(self, full, ir):
+    def calculate_lux(self):
+        full, ir = self.get_full_luminosity()
+
         if (full == 0xFFFF) | (ir == 0xFFFF):
             return 0
 
@@ -139,30 +141,30 @@ class Tsl2591:
 
         return max([lux1, lux2])
 
-    def enable(self):
+    def wake(self):
         self.bus.write_byte_data(
-                    SENSOR_ADDRESS,
+                    self.i2c_address,
                     COMMAND_BIT | REGISTER_ENABLE,
                     ENABLE_POWERON | ENABLE_AEN | ENABLE_AIEN
                     )
 
-    def disable(self):
+    def sleep(self):
         self.bus.write_byte_data(
-                    SENSOR_ADDRESS,
+                    self.i2c_address,
                     COMMAND_BIT | REGISTER_ENABLE,
                     ENABLE_POWEROFF
                     )
 
     def get_full_luminosity(self):
-        self.enable()
-        time.sleep(0.120*self.integration_time+1)
+        self.wake()
+        time.sleep(0.120*self.integration_time)
         full = self.bus.read_word_data(
-                    SENSOR_ADDRESS, COMMAND_BIT | REGISTER_CHAN0_LOW
+                    self.i2c_address, COMMAND_BIT | REGISTER_CHAN0_LOW
                     )
         ir = self.bus.read_word_data(
-                    SENSOR_ADDRESS, COMMAND_BIT | REGISTER_CHAN1_LOW
+                    self.i2c_address, COMMAND_BIT | REGISTER_CHAN1_LOW
                     )
-        self.disable()
+        self.sleep()
         return full, ir
 
     def get_luminosity(self, channel):

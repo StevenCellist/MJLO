@@ -63,6 +63,9 @@ class SSD1306:
         self.fill(0)
         self.show()
 
+    def poweron(self):
+        self.write_cmd(SET_DISP | 0x01)
+
     def poweroff(self):
         self.write_cmd(SET_DISP | 0x00)
 
@@ -90,10 +93,6 @@ class SSD1306:
 
     def fill(self, col):
         self.framebuf.fill(col)
-
-    def poweron(self):
-        self.write_cmd(SET_DISP | 0x01)
-
 
     def pixel(self, x, y, col):
         self.framebuf.pixel(x, y, col)
@@ -129,9 +128,6 @@ class SSD1306_I2C(SSD1306):
         # Blast out the frame buffer using a single I2C transaction to support
         # hardware I2C interfaces.
         self.i2c.writeto(self.addr, self.buffer)
-
-    def poweron(self):
-        pass
 
 
 class SSD1306_SPI(SSD1306):
