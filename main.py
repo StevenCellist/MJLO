@@ -7,7 +7,6 @@ import machine
 import struct
 import socket
 
-from lib.MAX4466 import MAX4466
 from lib.cayenneLPP import CayenneLPP
 from lib.VEML6070 import VEML6070
 from lib.TSL2591 import TSL2591
@@ -142,17 +141,17 @@ if previous_values:
     send_values(display_on = True)
 
 #%% start other sensors
-bme680 =      BME680(i2c=i2c_bus, address=0x77)     # temp, pres, hum, VOC sensor
-                                                    # active: 22 mA, sleep: 0.7 mA (forced query mode)
-veml6070 = VEML6070(i2c=i2c_bus, address=56)        # UV sensor
-veml6070.sleep()                                    # active: 0.0 mA, sleep: 0.0 mA
-tsl2591 = TSL2591(i2c=i2c_bus, address=0x29)        # lux sensor
-tsl2591.sleep()                                     # active: 0.0 mA, sleep: 0.0 mA
-max4466 = MAX4466('P18')                            # analog loudness sensor
-                                                    # active: 0.3 mA, sleep: 0.3 mA (always on)
-mq135 = MQ135('P17')                                # CO2 sensor
-                                                    # active: 40 mA, sleep: 0.0 mA
-volt_pin = ADC().channel(pin = 'P15', attn=ADC.ATTN_11DB)  # analog voltage sensor for battery level
+bme680 =     BME680(i2c=i2c_bus, address=0x77)              # temp, pres, hum, VOC sensor
+                                                            # active: 22 mA, sleep: 0.7 mA (forced query mode)
+veml6070 = VEML6070(i2c=i2c_bus, address=56)                # UV sensor
+veml6070.sleep()                                            # active: 0.0 mA, sleep: 0.0 mA
+tsl2591 =  TSL2591(i2c=i2c_bus, address=0x29)               # lux sensor
+tsl2591.sleep()                                             # active: 0.0 mA, sleep: 0.0 mA
+mq135 = MQ135('P17')                                        # CO2 sensor
+                                                            # active: 40 mA, sleep: 0.0 mA
+volt_pin = ADC().channel(pin = 'P15', attn=ADC.ATTN_11DB)   # analog voltage sensor for battery level
+max4466 =  ADC().channel(pin = 'P18', attn=ADC.ATTN_11DB)   # analog loudness sensor
+                                                            # active: 0.3 mA, sleep: 0.3 mA (always on)
 
 
 #%% get sensor values and put sensors to sleep immediately after
