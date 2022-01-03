@@ -24,18 +24,13 @@ _SDS011_CMDS = {'SET': b'\x01',
         'SLEEPWAKE': b'\x06'}
 
 class SDS011:
-    """A driver for the SDS011 particulate matter sensor.
-
-    :param uart: The `UART` object to use.
-    """
-    def __init__(self, uart):
+    def __init__(self, uart, boot):
         self._uart = uart
         self._pm25 = 0.0
         self._pm10 = 0.0
-        self._packet_status = False
-        self._packet = ()
 
-        self.set_reporting_mode_query()
+        if boot:
+            self.set_reporting_mode_query()
 
     @property
     def pm25(self):
@@ -47,44 +42,54 @@ class SDS011:
         """Return the PM10 concentration, in µg/m^3."""
         return self._pm10
 
-    @property
-    def packet_status(self):
-        """Returns False if the received packet is corrupted."""
-        return self._packet_status
-
-    @property
-    def packet(self):
-        """Return the last received packet."""
-        return self._packet
-
     def make_command(self, cmd, mode, param):
         header = b'\xaa\xb4'
         padding = b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff'
         checksum = chr(( ord(cmd) + ord(mode) + ord(param) + 255 + 255) % 256)
         checksum = bytes(checksum, 'utf8')
         tail = b'\xab'
-
         return header + cmd + mode + param + padding + checksum + tail
 
+    def get_response(self, command_ID):
+        # try for 120 bytes (0.1) second to get a response from sensor (typical response time 12~33 bytes)
+        for _ in range(120):
+            try:
+                header = self._uart.read(1)
+                if header == b'\xaa':
+                    command = self._uart.read(1)
+                    if command == command_ID:
+                        packet = self._uart.read(8)
+                        if packet != None:
+                            if command_ID == b'\xc0':
+                                self.process_measurement(packet)
+                            return True
+                    else:
+                        print("Response did not match command ID", command_ID)
+            except Exception as e:
+                print('Problem attempting to read:', e)
+        return False
+
     def wake(self):
-        """Sends wake command to sds011 (starts its fan)."""
+        """Sends wake command to sds011 (starts its fan and laser)."""
         cmd = self.make_command(_SDS011_CMDS['SLEEPWAKE'],
                 _SDS011_CMDS['SET'], chr(1))
         self._uart.write(cmd)
+        return self.get_response(b'\xc5')
 
     def sleep(self):
-        """Sends sleep command to sds011 (stops its fan)."""
+        """Sends sleep command to sds011 (stops its fan and laser)."""
         cmd = self.make_command(_SDS011_CMDS['SLEEPWAKE'],
                 _SDS011_CMDS['SET'], chr(0))
         self._uart.write(cmd)
+        return self.get_response(b'\xc5')
 
     def set_reporting_mode_query(self):
         cmd = self.make_command(_SDS011_CMDS['REPORTING_MODE'],
                 _SDS011_CMDS['SET'], chr(1))
         self._uart.write(cmd)
+        self.get_response(b'\xc5')
 
     def query(self):
-        """Query new measurement data"""
         cmd = self.make_command(_SDS011_CMDS['QUERY'], chr(0), chr(0))
         self._uart.write(cmd)
 
@@ -95,35 +100,9 @@ class SDS011:
             self._pm10 = data[1]/10.0
             checksum_OK = (checksum == (sum(data) % 256))
             tail_OK = tail == b'\xab'
-            self._packet_status = True if (checksum_OK and tail_OK) else False
         except Exception as e:
             print('Problem decoding packet:', e)
 
     def read(self):
-        """
-        Query a new measurement, wait for response and process it.
-        Waits for a response during 512 characters (0.4s at 9600bauds).
-        
-        Return True if a response has been received, False overwise.
-        """
-        #Query measurement
-        self.query()
-
-        #Read measurement
-        #Drops up to 512 characters before giving up finding a measurement pkt...
-        for i in range(512):
-            try:
-                header = self._uart.read(1)
-                if header == b'\xaa':
-                    command = self._uart.read(1)
-
-                    if command == b'\xc0':
-                        packet = self._uart.read(8)
-                        if packet != None:
-                            self.process_measurement(packet)
-                            return True
-            except Exception as e:
-                print('Problem attempting to read:', e)
-
-        #If we gave up finding a measurement pkt
-        return False
+        self.query()                        # query measurement
+        return self.get_response(b'\xc0')   # try to get values from the response

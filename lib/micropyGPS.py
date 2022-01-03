@@ -12,12 +12,6 @@ class MicropyGPS(object):
     # Max Number of Characters a valid sentence can be (based on GGA sentence)
     SENTENCE_LIMIT = 90
     __HEMISPHERES = ('N', 'S', 'E', 'W')
-    __NO_FIX = 1
-    __FIX_2D = 2
-    __FIX_3D = 3
-    __MONTHS = ('January', 'February', 'March', 'April', 'May',
-                'June', 'July', 'August', 'September', 'October',
-                'November', 'December')
 
     def __init__(self, local_offset=0):
         """
@@ -73,9 +67,7 @@ class MicropyGPS(object):
         self.fix_stat = 0
         self.fix_type = 1
 
-    ########################################
     # Coordinates Translation Functions
-    ########################################
     @property
     def latitude(self):
         """Format Latitude Data Correctly"""
@@ -92,9 +84,7 @@ class MicropyGPS(object):
     def alt(self):
         return self.altitude
 
-    ########################################
     # Sentence Parsers
-    ########################################
     def gprmc(self):
         """Parse Recommended Minimum Specific GPS/Transit data (RMC)Sentence.
         Updates UTC timestamp, latitude, longitude, Course, Speed, Date, and fix status

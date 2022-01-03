@@ -1,8 +1,5 @@
 # MicroPython SSD1306 OLED driver, I2C interface
-
-import time
 import framebuf
-
 
 # register definitions
 SET_CONTRAST        = const(0x81)
@@ -23,16 +20,12 @@ SET_PRECHARGE       = const(0xd9)
 SET_VCOM_DESEL      = const(0xdb)
 SET_CHARGE_PUMP     = const(0x8d)
 
-
 class SSD1306_DRIVER:
     def __init__(self, width, height, external_vcc):
         self.width = width
         self.height = height
         self.external_vcc = external_vcc
         self.pages = self.height // 8
-        # Note the subclass must initialize self.framebuf to a framebuffer.
-        # This is necessary because the underlying data buffer is different
-        # between I2C and SPI implementations (I2C needs an extra byte).
         self.poweron()
         self.init_display()
 
@@ -69,13 +62,6 @@ class SSD1306_DRIVER:
     def poweroff(self):
         self.write_cmd(SET_DISP | 0x00)
 
-    def contrast(self, contrast):
-        self.write_cmd(SET_CONTRAST)
-        self.write_cmd(contrast)
-
-    def invert(self, invert):
-        self.write_cmd(SET_NORM_INV | (invert & 1))
-
     def show(self):
         x0 = 0
         x1 = self.width - 1
@@ -94,26 +80,14 @@ class SSD1306_DRIVER:
     def fill(self, col):
         self.framebuf.fill(col)
 
-    def pixel(self, x, y, col):
-        self.framebuf.pixel(x, y, col)
-
-    def scroll(self, dx, dy):
-        self.framebuf.scroll(dx, dy)
-
     def text(self, string, x, y, col=1):
         self.framebuf.text(string, x, y, col)
-
 
 class SSD1306(SSD1306_DRIVER):
     def __init__(self, width, height, i2c, addr=0x3c, external_vcc=False):
         self.i2c = i2c
         self.addr = addr
         self.temp = bytearray(2)
-        # Add an extra byte to the data buffer to hold an I2C data/command byte
-        # to use hardware-compatible I2C transactions.  A memoryview of the
-        # buffer is used to mask this byte from the framebuffer operations
-        # (without a major memory hit as memoryview doesn't copy to a separate
-        # buffer).
         self.buffer = bytearray(((height // 8) * width) + 1)
         self.buffer[0] = 0x40  # Set first byte of data buffer to Co=0, D/C=1
         self.framebuf = framebuf.FrameBuffer1(memoryview(self.buffer)[1:], width, height)
@@ -125,6 +99,4 @@ class SSD1306(SSD1306_DRIVER):
         self.i2c.writeto(self.addr, self.temp)
 
     def write_framebuf(self):
-        # Blast out the frame buffer using a single I2C transaction to support
-        # hardware I2C interfaces.
         self.i2c.writeto(self.addr, self.buffer)

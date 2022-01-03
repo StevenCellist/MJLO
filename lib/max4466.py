@@ -1,4 +1,3 @@
-import time
 from machine import ADC
 
 class MAX4466:

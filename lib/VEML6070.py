@@ -1,11 +1,8 @@
 from micropython import const
 
-
 # Set I2C addresses:
 _VEML6070_ADDR_ARA = const(0x18 >> 1)
 _VEML6070_ADDR_CMD = const(0x70 >> 1)
-_VEML6070_ADDR_LOW = const(0x71 >> 1)
-_VEML6070_ADDR_HIGH = const(0x73 >> 1)
 
 # Integration Time dictionary. [0] is the byte setting; [1] is the risk
 # level divisor.
@@ -26,12 +23,9 @@ _VEML6070_RISK_LEVEL = {
 }
 
 class I2CDevice:
-
     def __init__(self, i2c, device_address, probe=True):
-
         self.i2c = i2c
         self.device_address = device_address
-
         if probe:
             self.__probe_for_device()
 
@@ -41,33 +35,6 @@ class I2CDevice:
     def write(self, buf):
         self.i2c.writeto(self.device_address, buf)
 
-    # pylint: disable-msg=too-many-arguments
-    def write_then_readinto(
-        self,
-        out_buffer,
-        in_buffer,
-        *,
-        out_start=0,
-        out_end=None,
-        in_start=0,
-        in_end=None
-    ):
-
-        if out_end is None:
-            out_end = len(out_buffer)
-        if in_end is None:
-            in_end = len(in_buffer)
-
-        self.i2c.writeto_then_readfrom(
-            self.device_address,
-            out_buffer,
-            in_buffer,
-            out_start=out_start,
-            out_end=out_end,
-            in_start=in_start,
-            in_end=in_end,
-        )
-
     def __enter__(self):
         return self
 
@@ -75,11 +42,6 @@ class I2CDevice:
         return False
 
     def __probe_for_device(self):
-        """
-        Try to read a byte from an address,
-        if you get an OSError it means the device is not there
-        or that the device does not support these means of probing
-        """
         try:
             self.i2c.writeto(self.device_address, b"")
         except OSError:
@@ -94,7 +56,6 @@ class I2CDevice:
                 # pylint: enable=raise-missing-from
 
 class VEML6070:
-
     def __init__(self, i2c, address, _veml6070_it="VEML6070_1_T", ack=False):
         # Check if the IT is valid
         if _veml6070_it not in _VEML6070_INTEGRATION_TIME:
@@ -139,52 +100,6 @@ class VEML6070:
         buf |= buflow[0]
 
         return buf
-
-    @property
-    def ack(self):
-        """
-        Turns on or off the ACKnowledge function of the sensor. The ACK function will send
-        a signal to the host when the value of the sensed UV light changes beyond the
-        programmed threshold.
-        """
-        return self._ack
-
-    @ack.setter
-    def ack(self, new_ack):
-        if new_ack != bool(new_ack):
-            raise ValueError("ACK must be 'True' or 'False'.")
-        self._ack = int(new_ack)
-        self.buf[0] = (
-            self._ack << 5
-            | self._ack_thd << 4
-            | _VEML6070_INTEGRATION_TIME[self._it][0] << 2
-            | 0x02
-        )
-        with self.i2c_cmd as i2c_cmd:
-            i2c_cmd.write(self.buf)
-
-    @property
-    def ack_threshold(self):
-        """
-        The ACKnowledge Threshold, which alerts the host controller to value changes
-        greater than the threshold. Available settings are: :const:`0` = 102 steps;
-        :const:`1` = 145 steps. :const:`0` is the default setting.
-        """
-        return self._ack_thd
-
-    @ack_threshold.setter
-    def ack_threshold(self, new_ack_thd):
-        if new_ack_thd not in (0, 1):
-            raise ValueError("ACK Threshold must be '0' or '1'.")
-        self._ack_thd = int(new_ack_thd)
-        self.buf[0] = (
-            self._ack << 5
-            | self._ack_thd << 4
-            | _VEML6070_INTEGRATION_TIME[self._it][0] << 2
-            | 0x02
-        )
-        with self.i2c_cmd as i2c_cmd:
-            i2c_cmd.write(self.buf)
 
     @property
     def integration_time(self):
@@ -237,7 +152,6 @@ class VEML6070:
             i2c_cmd.write(self.buf)
 
     def get_index(self, buf):
-
         adjusted = int(buf/1)
         for levels in _VEML6070_RISK_LEVEL:
             tmp_range = range(_VEML6070_RISK_LEVEL[levels][0],

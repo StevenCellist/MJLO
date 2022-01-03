@@ -49,7 +49,6 @@ GAIN_MAX = 0x30
 def _bytes_to_int(data):
     return data[0] + (data[1]<<8)
 
-from machine import I2C, Pin
 class SMBusEmulator:
     __slots__ = ('i2c',)
     def __init__(self, i2c_bus):
@@ -166,17 +165,6 @@ class TSL2591:
                     )
         self.sleep()
         return full, ir
-
-    def get_luminosity(self, channel):
-        full, ir = self.get_full_luminosity()
-        if channel == FULLSPECTRUM:
-            return full
-        elif channel == INFRARED:
-            return ir
-        elif channel == VISIBLE:
-            return full - ir
-        else:
-            return 0
 
     def sample(self):
         full, ir = self.get_full_luminosity()
