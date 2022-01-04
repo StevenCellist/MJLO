@@ -1,6 +1,6 @@
 # Meet je leefomgeving
 In deze repository vindt u de meest recente software die op de meetkastjes gebruikt wordt.  
-Het prototype hiervan is aangeleverd door ICR3ATE en vervolgens volledig verder ontwikkeld door Steven Boonstoppel.  
+Het prototype hiervan is ontworpen door Klaas van Laveren in samenwerking met ICR3ATE en vervolgens volledig verder ontwikkeld door Steven Boonstoppel.  
 
 ## Algemene opzet
 De constructie van de software is als volgt:  
