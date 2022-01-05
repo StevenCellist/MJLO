@@ -2,6 +2,7 @@ import pycom
 import machine
 from lib.SDS011 import SDS011
 import time
+
 pycom.heartbeat(False)
 pycom.heartbeat_on_boot(False)
 pycom.wifi_on_boot(False)
@@ -17,7 +18,7 @@ sds011 = SDS011(com, boot)                                  # fine particle sens
 # on <5V, the UART communcation to SDS011 is slow to start
 # but since this is the 'slowest' sensor, we just wait for it to start
 # and then do other stuff in the meantime                     
-while not sds011.wake():                                    # active: 66 mA, sleep: 3.1 mA
+while not sds011.wake():                                    # active: 66 mA, sleep: 2.8 mA
     pass
 
 mq135_en = machine.Pin('P12', mode=machine.Pin.OUT)         # MQ135 VIN pin

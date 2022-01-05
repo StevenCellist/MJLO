@@ -1,4 +1,5 @@
 import time
+import math
 from micropython import const
 
 try:
@@ -256,7 +257,7 @@ class Adafruit_BME680:
         return calc_hum
 
     @property
-    def gas(self):
+    def resistance(self):
         """The gas resistance in ohms"""
         self._perform_reading()
         var1 = ((1340 + (5 * self._sw_err)) * (_LOOKUP_TABLE_1[self._gas_range])) / 65536
@@ -264,6 +265,42 @@ class Adafruit_BME680:
         var3 = (_LOOKUP_TABLE_2[self._gas_range] * var1) / 512
         calc_gas_res = (var3 + (var2 / 2)) / var2
         return int(calc_gas_res)
+
+    
+    def gas(self, temp, hum_rel, tVOC, hum_abs_base, counter, baseline, polls):
+        """The TVOC in ppb based on 
+        https://github.com/juergs/ESPEasy_BME680_TVOC/blob/master/lib/js_bme680.cpp"""
+        hum_abs = self.absolute_humidity(temp, hum_rel)
+        res = sum([self.resistance for _ in range(polls)])/polls    # get average resistance from multiple readings
+        if hum_abs_base == 0 or hum_abs < hum_abs_base:
+            hum_abs_base = hum_abs
+        else:
+            hum_abs_base += 0.2 * (hum_abs - hum_abs_base)
+        counter, baseline = self.auto_baseline_correction(res, hum_abs, counter, baseline)
+        ratio = baseline / (res * hum_abs_base * 7)
+        tVOC_new = 1250 * math.log(ratio) + 125
+        tVOC = tVOC + 0.3*(tVOC_new - tVOC)
+        #print(tVOC, tVOC_new, temp, hum_rel, res, hum_abs, baseline, counter, hum_abs_base, ratio)
+        return int(tVOC), hum_abs_base, counter, baseline
+
+    def absolute_humidity(self, temp, hum_rel):
+        """The absolute humidity in weird but correct format"""
+        sdd = 6.1078 * pow(10, (7.5*temp) / (237.3 + temp))
+        dd = hum_rel / 100 * sdd
+        return 216.687*dd / (273.15 + temp)
+
+    def auto_baseline_correction(self, res, hum_abs, counter, baseline):
+        """Helper function for TVOC calculation"""
+        base_new = res * hum_abs * 7
+
+        if counter > 5:
+            baseline = base_new
+            counter = 0
+        elif base_new > baseline:
+            counter += 1
+        else:
+            counter = 0
+        return counter, baseline
 
     def _perform_reading(self):
         """Perform a single-shot reading from the sensor and fill internal data structure for

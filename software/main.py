@@ -1,9 +1,6 @@
 #%% imports
-from time import sleep, ticks_ms
+import network
 import ubinascii
-from machine import Pin, ADC, RTC, I2C
-from network import LoRa
-import machine
 import struct
 import socket
 
@@ -16,41 +13,34 @@ from lib.SSD1306 import SSD1306
 from lib.micropyGPS import MicropyGPS
 import settings
 
-
-sds011 = sds011
-mq135_en = mq135_en
-wake_time = wake_time
-
 # set up display and GPS (TODO)
-i2c_bus = I2C(0, I2C.MASTER)
+i2c_bus = machine.I2C(0, machine.I2C.MASTER)
 display = SSD1306(128, 64, i2c_bus)                 # active: ~5 mA, sleep: 0.0 mA
 gps = MicropyGPS()
 
 
 #%% setup LoRa
-lora = LoRa(mode = LoRa.LORAWAN, region = LoRa.EU868)       # create LoRa object
-lora.nvram_restore()                                        # restore the LoRa information from nvRAM
-
 if settings.DEBUG_MODE == False:
-
+    lora = network.LoRa(mode = network.LoRa.LORAWAN, region = network.LoRa.EU868, sf = 9)       # create LoRa object TODO power_mode = network.LoRa.TX_ONLY
+    lora.nvram_restore()                                        # restore the LoRa information from nvRAM
     # if LoRa was not (correctly) restored from nvRAM, try to connect
     if not lora.has_joined():
         app_eui = ubinascii.unhexlify(settings.APP_EUI)
         app_key = ubinascii.unhexlify(settings.APP_KEY)
             
-        lora.join(activation = LoRa.OTAA, auth = (app_eui, app_key), timeout = 0)
+        lora.join(activation = network.LoRa.OTAA, auth = (app_eui, app_key), timeout = 0)
         display.text("Verbinden...", 1, 1)
         display.show()
 
         print('Verbinden met LoRaWAN')
         while not lora.has_joined():
             print('.', end = '')
-            sleep(0.2)
+            time.sleep(0.2)
 
-    s = socket.socket(socket.AF_LORA, socket.SOCK_RAW)      # # create a LoRa socket.
-    s.setsockopt(socket.SOL_LORA, socket.SO_DR, 5)          # set the LoRaWAN data rate. TODO use at least SF9 as configured in TTN.. but rather SF12
+    s = socket.socket(socket.AF_LORA, socket.SOCK_RAW)      # create a LoRa socket.
+    s.setsockopt(socket.SOL_LORA, socket.SO_DR, 3)          # set the LoRaWAN data rate. TODO use at least SF9 as configured in TTN.. but rather SF12
     s.setblocking(True)
-    lpp = CayenneLPP(size = 110, sock = s)                  # TODO size is 54 bytes in theory: evaluate SF12 (51 bytes)
+    lpp = CayenneLPP(size = 54, sock = s)                   # TODO evaluate SF12 (51 bytes)
 
     print('Verbonden met LoRa!')
     display.text("Verbonden!", 1, 11)
@@ -63,19 +53,22 @@ else:
 def send_values(display_on = False):
     if settings.DEBUG_MODE == False:
         # create cayenne LPP packet
-        lpp.add_analog_input(batt_volt, channel = 0) #Voltage measurement, 2 bites with fractions
-        lpp.add_temperature(temperature, channel = 1) #temp
-        lpp.add_barometric_pressure(pressure, channel = 2)
-        lpp.add_relative_humidity(humidity, channel = 3) #humidity 0-100%   #see this url: https://www.thethingsnetwork.org/forum/t/cayenne-lpp-format-analog-data-wrong/14676
-        lpp.add_luminosity(loudness, channel = 4)    #loudness 0-4096
-        lpp.add_luminosity(light, channel = 5) #lux 2 bytes unsinged
-        lpp.add_luminosity(uv_raw, channel = 6) #UV sensor2 byte unsigned
-        lpp.add_luminosity(voc, channel = 7) #TVOC from 0 to 1187 ppb
-        lpp.add_luminosity(ppm_co2, channel = 8) #CO2 in 400-8192 ppm
-        lpp.add_barometric_pressure(pm_25, channel = 9) #pm25 0.0-999.9 ug/m3 (2 bytes unsigned) TODO: Find out if it is better to use unsigned fields for these
-        lpp.add_barometric_pressure(pm_100, channel = 10)   #pm 10
-        lpp.add_gps(gps.latitude, gps.longitude, gps.altitude, channel = 11)
+        lpp.add_analog_input(batt_volt, channel = 0)        # 1+1+2=4: 0.01 V accurate
+        lpp.add_temperature(temperature, channel = 1)       # 1+1+2=4: 0.1 C accurate
+        lpp.add_barometric_pressure(pressure, channel = 2)  # 1+1+2=4: 0.1 hPa accurate
+        lpp.add_relative_humidity(humidity, channel = 3)    # 1+1+1=3: 0.5% accurate (range 0-100)
+        lpp.add_luminosity(loudness, channel = 4)           # 1+1+2=4: 1 accurate (range 0-4096)
+        lpp.add_luminosity(light, channel = 5)              # 1+1+2=4: 1 lux accurate (range 0-65536)
+        lpp.add_luminosity(uv_raw, channel = 6)             # 1+1+2=4: 1 lux accurate (range 0-9999)
+        lpp.add_luminosity(tVOC, channel = 7)               # 1+1+2=4: 1 ppb accurate (range 0-1187)
+        lpp.add_luminosity(ppm_co2, channel = 8)            # 1+1+2=4: 1 ppm accurate (range 0-65536)
+        lpp.add_barometric_pressure(pm_25, channel = 9)     # 1+1+2=4: 0.1 ug/m3 accurate (range 0.0-999.9) TODO: Find out if it is better to use unsigned fields for these
+        lpp.add_barometric_pressure(pm_100, channel = 10)   # 1+1+2=4: 0.1 ug/m3 accurate (range 0.0-999.9)
+        lpp.add_gps(gps.latitude, gps.longitude, gps.altitude, channel = 11)    # 1+1+9=11: 0.0001, 0.0001 and 0.01 accurate resp.
         lpp.send(reset_payload = True)
+
+        # we don't need LoRa anymore so we save LoRa object to NVRAM and profit from machine.sleep's reduced power consumption
+        lora.nvram_save()                                   # TODO figure out if socket.send is indeed nonblocking
     else:
         # print all of the sensor values via REPL (serial)
         print("GPS: NB %f, OL %f, H %f" % (gps.latitude, gps.longitude, gps.altitude))
@@ -84,38 +77,37 @@ def send_values(display_on = False):
         print("Luchtvochtigheid: %d"    % humidity)
         print("Fijnstof 2.5, 10: %.2f, %.2f" % (pm_25, pm_100))
         print("Volume: %d"              % loudness)
-        print("VOC, CO2: %d %d"         % (voc, ppm_co2))
-        print("UV index, risk: %d, %s"  % (uv_raw, "LOW"))
+        print("VOC, CO2: %d %d"         % (tVOC, ppm_co2))
+        print("UV index: %d"            % uv_raw)
         print("Lux: %d"                 % light)
         print("Voltage: %.3f, %d %%"    % (batt_volt, batt_perc))
 
-    if display_on:
-        # display all sensor data on display
+    if display_on:  # display all sensor data on display
         display.poweron()
         display.fill(0)
         display.text("Temp: %.2f"     % temperature, 1,  1)
         display.text("Druk: %.2f "    % pressure,    1, 11)
         display.text("Vocht: %d %%"   % humidity,    1, 21)
         display.text("Lux: %d"        % light,       1, 31)
-        display.text("UV index: %s"   % "LOW",    1, 41)
+        display.text("UV index: %s"   % uv_raw,      1, 41)
         display.text("Accu: ~ %d %%"  % batt_perc,   1, 54)
         display.show()
-        sleep(settings.DISPLAY_TIME)
+        machine.sleep(settings.DISPLAY_TIME * 1000)
         display.fill(0)
         display.text("Stof 2.5: %.2f" % pm_25,     1,  1)
         display.text("Stof 10: %.2f"  % pm_100,    1, 11)
-        display.text("VOC: %d"        % voc,       1, 21)
+        display.text("VOC: %d"        % tVOC,      1, 21)
         display.text("CO2: %d"        % ppm_co2,   1, 31)
         display.text("Volume: %d"     % loudness,  1, 41)
         display.text("Accu: ~ %d %%"  % batt_perc, 1, 54)
         display.show()
-        sleep(settings.DISPLAY_TIME)
+        machine.sleep(settings.DISPLAY_TIME * 1000)
         display.fill(0)
         display.poweroff()
 
 #%% retrieve sensor values from RTC memory
 # get access to RTC module for deepsleep memory
-rtc = RTC()
+rtc = machine.RTC()
 
 delimiter = b'\x21\x21'  # TODO might need better delimiter, but this has never given any errors yet
 
@@ -123,22 +115,30 @@ delimiter = b'\x21\x21'  # TODO might need better delimiter, but this has never 
 previous_values = rtc.memory()
 if previous_values:
     previous_values = previous_values.split(delimiter)
-    batt_volt = struct.unpack('f', previous_values[0])[0]
+    batt_volt = struct.unpack('f', previous_values[0])[0]   # unpack returns tuple (unpacked_value,) so we select [0] everytime
     temperature = struct.unpack('f', previous_values[1])[0]
     pressure  = struct.unpack('f', previous_values[2])[0]
     humidity = struct.unpack('f', previous_values[3])[0]
     loudness = struct.unpack('i', previous_values[4])[0]
     light = struct.unpack('i', previous_values[5])[0]
     uv_raw = struct.unpack('i', previous_values[6])[0]
-    voc = struct.unpack('i', previous_values[7])[0]
+    tVOC = struct.unpack('i', previous_values[7])[0]
     ppm_co2 = struct.unpack('i', previous_values[8])[0]
     pm_25 = struct.unpack('f', previous_values[9])[0]
     pm_100 = struct.unpack('f', previous_values[10])[0]
 
-    # calculate approx. battery percentage, assuming a range of 3.25 to 4.25 Volts on the battery
-    batt_perc = (batt_volt - 3.25) * 100
+    voc_hum_base = struct.unpack('f', previous_values[11])[0]
+    voc_counter = struct.unpack('i', previous_values[12])[0]
+    voc_baseline = struct.unpack('i', previous_values[13])[0]
+    # calculate approx. battery percentage, assuming a range of 3.3 to 4.3 Volts on the battery
+    batt_perc = (batt_volt - 3.3) * 100
 
     send_values(display_on = True)
+else:
+    tVOC = 125
+    voc_hum_base = 0
+    voc_counter = 6
+    voc_baseline = 0
 
 #%% start other sensors
 bme680 =     BME680(i2c=i2c_bus, address=0x77)              # temp, pres, hum, VOC sensor
@@ -149,8 +149,8 @@ tsl2591 =  TSL2591(i2c=i2c_bus, address=0x29)               # lux sensor
 tsl2591.sleep()                                             # active: 0.0 mA, sleep: 0.0 mA
 mq135 = MQ135('P17')                                        # CO2 sensor
                                                             # active: 40 mA, sleep: 0.0 mA
-volt_pin = ADC().channel(pin = 'P15', attn=ADC.ATTN_11DB)   # analog voltage sensor for battery level
-max4466 =  ADC().channel(pin = 'P18', attn=ADC.ATTN_11DB)   # analog loudness sensor
+volt_pin = machine.ADC().channel(pin = 'P15', attn=machine.ADC.ATTN_11DB)   # analog voltage sensor for battery level
+max4466 =  machine.ADC().channel(pin = 'P18', attn=machine.ADC.ATTN_11DB)   # analog loudness sensor
                                                             # active: 0.3 mA, sleep: 0.3 mA (always on)
 
 
@@ -164,7 +164,9 @@ batt_volt = sum([volt_pin.voltage() * 2 / 1000 for _ in range(polls)]) / polls
 temperature = sum([bme680.temperature for _ in range(polls)]) / polls
 humidity = sum([bme680.relative_humidity for _ in range(polls)]) / polls
 pressure = sum([bme680.pressure for _ in range(polls)]) / polls
-voc = sum([bme680.gas for _ in range(polls)]) / polls
+
+tVOC, voc_hum_base, voc_counter, voc_baseline = bme680.gas(temperature, humidity, tVOC, voc_hum_base, voc_counter, voc_baseline, polls)
+
 loudness = sum([max4466.value() for _ in range(polls)]) / polls
 light = sum([tsl2591.calculate_lux() for _ in range(polls)]) / polls
 uv_raw = sum([veml6070.uv_raw for _ in range(polls)]) / polls
@@ -173,15 +175,10 @@ uv_index = veml6070.get_index(uv_raw)
 tsl2591.sleep()
 veml6070.sleep()
 
-batt_perc = (batt_volt - 3.25) * 100
+current_interval = time.ticks_ms() - wake_time              # calculate how long SDS011 has been running yet
+machine.sleep(settings.WAKE_TIME * 1000 - current_interval) # sleep for the remaining time
 
-# by now, the LoRa message is definitely sent, so we save LoRa object to NVRAM and profit from machine.sleep's reduced power consumption
-lora.nvram_save()                                   # save LoRa information to RAM
-
-current_interval = ticks_ms() - wake_time           # calculate how long SDS011 has been running yet
-machine.sleep(settings.WAKE_TIME * 1000 - current_interval)# sleep for the remaining time
-
-while not sds011.read():                            # make sure we get response from SDS011
+while not sds011.read():                                    # make sure we get response from SDS011
     pass
 
 pm_25 = sds011.pm25
@@ -193,7 +190,7 @@ mq135_en.value(0)
 
 
 #%% hibernate, but restart to GPS mode if push button is pressed
-push_button = Pin('P23', mode=Pin.IN, pull=Pin.PULL_DOWN)
+push_button = machine.Pin('P23', mode=machine.Pin.IN, pull=machine.Pin.PULL_DOWN)
 machine.pin_sleep_wakeup(['P23'], mode=machine.WAKEUP_ANY_HIGH, enable_pull=True)
 
 # write all values to psRAM to send during next wake
@@ -204,10 +201,13 @@ memory_string = ( struct.pack('f', float(batt_volt)) + delimiter
                 + struct.pack('i', int(loudness)) + delimiter
                 + struct.pack('i', int(light)) + delimiter
                 + struct.pack('i', int(uv_raw)) + delimiter
-                + struct.pack('i', int(voc)) + delimiter
+                + struct.pack('i', int(tVOC)) + delimiter
                 + struct.pack('i', int(ppm_co2)) + delimiter
                 + struct.pack('f', float(pm_25)) + delimiter
-                + struct.pack('f', float(pm_100)))
+                + struct.pack('f', float(pm_100)) + delimiter
+                + struct.pack('f', float(voc_hum_base)) + delimiter
+                + struct.pack('i', int(voc_counter)) + delimiter
+                + struct.pack('i', int(voc_baseline)))
 rtc.memory(memory_string)
 
 machine.deepsleep(settings.SLEEP_TIME * 1000)
