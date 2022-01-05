@@ -40,7 +40,8 @@ Let op: versie 3.1 van dit breakout board verschilt op meer vlakken van v3.0 dan
 Zie de figuur hieronder voor het stroomgebruik van de huidige versie software. De gemiddelde stroomsterkte tijdens activiteit is 105 mA; in slaap 5.1 mA.  
 De SDS011 gebruikt tijdens slaap 2.8 mA, de BME680 0.6 mA, de MAX4466 0.3 mA; het restant (1.4 mA) kan waarschijnlijk toegeschreven worden aan de LoPy4 + Expansion Board.  
 De SDS011 hoort officieel op 5V te draaien. Vanwege de (in)efficiëntie van boost converters van accuspanning naar 5V draait deze sensor echter op een officieel te laag voltage. Kwalitatieve tests moeten nog gedaan worden, maar eerst test doet vermoeden dat meetresultaten niet beïnvloed worden; de sensor start alleen een enkele seconde slomer op. Wel zorg dus om de kastjes op tijd op te laden, want de ventilator draait wel erg traag in de dip van de ontladingscyclus van een lithium accu.  
-![Stroomgebruik MJLO-12 op v03.01.22](Stroomgebruik_v03_01_22.png)
+De gemiddelde stroomsterkte tijdens activiteit is 105 mA; tijdens deepsleep 5.1 mA. De vermoedde accuduur is daarmee (ruim) twee weken, waarbij de zonnepaneel buiten beschouwing wordt gelaten.  
+![Stroomgebruik MJLO-12 op v05.01.22](Stroomgebruik_v05_01_22.png)
 
 ## Schema
 Zie [dit bestand](Meet-je-leefomgeving-schematic.pdf) voor de opbouw van het circuit in de sensorkastjes.
