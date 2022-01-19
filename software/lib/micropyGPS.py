@@ -17,11 +17,8 @@ class MicropyGPS(object):
         """
         Setup GPS Object Status Flags, Internal Data Registers, etc
             local_offset (int): Timzone Difference to UTC
-            location_formatting (str): Style For Presenting Longitude/Latitude:
-                                       Decimal Degree Minute (ddm) - 40° 26.767′ N
         """
 
-        #####################
         # Object Status Flags
         self.sentence_active = False
         self.active_segment = 0
@@ -31,13 +28,11 @@ class MicropyGPS(object):
         self.char_count = 0
         self.fix_time = 0
 
-        #####################
         # Sentence Statistics
         self.crc_fails = 0
         self.clean_sentences = 0
         self.parsed_sentences = 0
 
-        #####################
         # Data From Sentences
         # Time
         self.timestamp = [0, 0, 0]

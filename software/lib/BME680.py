@@ -28,6 +28,11 @@ _BME680_FILTERSIZES = (0, 1, 3, 7, 15, 31, 63, 127)
 
 _BME680_RUNGAS = const(0x10)
 
+CONF_T_P_MODE_ADDR = _BME680_REG_CTRL_MEAS
+MODE_MSK = 0x03
+MODE_POS = 0
+POLL_PERIOD_MS = 10
+
 _LOOKUP_TABLE_1 = (
     2147483647.0,
     2147483647.0,
@@ -266,22 +271,24 @@ class Adafruit_BME680:
         calc_gas_res = (var3 + (var2 / 2)) / var2
         return int(calc_gas_res)
 
-    
-    def gas(self, temp, hum_rel, tVOC, hum_abs_base, counter, baseline, polls):
-        """The TVOC in ppb based on 
-        https://github.com/juergs/ESPEasy_BME680_TVOC/blob/master/lib/js_bme680.cpp"""
-        hum_abs = self.absolute_humidity(temp, hum_rel)
-        res = sum([self.resistance for _ in range(polls)])/polls    # get average resistance from multiple readings
-        if hum_abs_base == 0 or hum_abs < hum_abs_base:
-            hum_abs_base = hum_abs
-        else:
-            hum_abs_base += 0.2 * (hum_abs - hum_abs_base)
-        counter, baseline = self.auto_baseline_correction(res, hum_abs, counter, baseline)
-        ratio = baseline / (res * hum_abs_base * 7)
-        tVOC_new = 1250 * math.log(ratio) + 125
-        tVOC = tVOC + 0.3*(tVOC_new - tVOC)
+    @property
+    def gas(self):
+        #(self, temp, hum_rel, tVOC, hum_abs_base, counter, baseline, polls)
+        #"""The TVOC in ppb based on 
+        #https://github.com/juergs/ESPEasy_BME680_TVOC/blob/master/lib/js_bme680.cpp"""
+        #hum_abs = self.absolute_humidity(temp, hum_rel)
+        #res = sum([self.resistance for _ in range(polls)])/polls    # get average resistance from multiple readings
+        #if hum_abs_base == 0 or hum_abs < hum_abs_base:
+        #    hum_abs_base = hum_abs
+        #else:
+        #    hum_abs_base += 0.2 * (hum_abs - hum_abs_base)
+        #counter, baseline = self.auto_baseline_correction(res, hum_abs, counter, baseline)
+        #ratio = baseline / (res * hum_abs_base * 7)
+        #tVOC_new = 1250 * math.log(ratio) + 125
+        #tVOC = tVOC + 0.3*(tVOC_new - tVOC)
         #print(tVOC, tVOC_new, temp, hum_rel, res, hum_abs, baseline, counter, hum_abs_base, ratio)
-        return int(tVOC), hum_abs_base, counter, baseline
+        #return int(tVOC), hum_abs_base, counter, baseline
+        return self.resistance
 
     def absolute_humidity(self, temp, hum_rel):
         """The absolute humidity in weird but correct format"""
@@ -368,6 +375,30 @@ class Adafruit_BME680:
     def _read_byte(self, register):
         return self._read(register, 1)[0]
 
+    # these functions are ported from Pimoroni but don't seem to add anything
+    def set_power_mode(self, value, blocking=True):
+        """Set power mode."""
+        if value not in (0, 1):
+            raise ValueError('Power mode should be one of SLEEP_MODE or FORCED_MODE')
+
+        self.power_mode = value
+
+        self._set_bits(CONF_T_P_MODE_ADDR, MODE_MSK, MODE_POS, value)
+
+        while blocking and self.get_power_mode() != self.power_mode:
+            time.sleep(POLL_PERIOD_MS / 1000.0)
+
+    def get_power_mode(self):
+        """Get power mode."""
+        self.power_mode = self._read(CONF_T_P_MODE_ADDR, 1)
+        return self.power_mode
+
+    def _set_bits(self, register, mask, position, value):
+        """Mask out and set one or more bits in a register."""
+        temp = self._read(register, 1)[0]
+        temp &= ~mask
+        temp |= value << position
+        self._write(register, [temp])
 
 class BME680(Adafruit_BME680):
     def __init__(self, i2c, address=0x77, *, refresh_rate=10):

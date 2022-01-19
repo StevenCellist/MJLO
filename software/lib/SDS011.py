@@ -24,13 +24,12 @@ _SDS011_CMDS = {'SET': b'\x01',
         'SLEEPWAKE': b'\x06'}
 
 class SDS011:
-    def __init__(self, uart, boot):
+    def __init__(self, uart):
         self._uart = uart
         self._pm25 = 0.0
         self._pm10 = 0.0
 
-        if boot:
-            self.set_reporting_mode_query()
+        self.set_reporting_mode_query()
 
     @property
     def pm25(self):
@@ -87,7 +86,7 @@ class SDS011:
         cmd = self.make_command(_SDS011_CMDS['REPORTING_MODE'],
                 _SDS011_CMDS['SET'], chr(1))
         self._uart.write(cmd)
-        self.get_response(b'\xc5')
+        return self.get_response(b'\xc5')
 
     def query(self):
         cmd = self.make_command(_SDS011_CMDS['QUERY'], chr(0), chr(0))
