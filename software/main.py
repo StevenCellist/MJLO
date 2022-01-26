@@ -1,26 +1,24 @@
 import machine
 import settings
 
-#%% if pushbutton was pressed, fix GPS as very first thing
 from lib.micropyGPS import MicropyGPS
+gps_en = machine.Pin('P22', mode=machine.Pin.OUT)               # 2N2907 (PNP) gate pin
+gps_en.hold(False)                                              # disable hold from deepsleep
+gps_en.value(1)                                                 # keep disabled
+gps = MicropyGPS()                                              # create GPS object
+
 from lib.SSD1306 import SSD1306
-
-use_gps = False
-gps = MicropyGPS()
-# setup I2C bus and display
-i2c_bus = machine.I2C(0, machine.I2C.MASTER)
+i2c_bus = machine.I2C(0, machine.I2C.MASTER)                    # create I2C object and initialize (inactive) display
 display = SSD1306(128, 64, i2c_bus)
+display.poweroff()
 
-#%% get GPS location if push button was pressed
-# get wake reason
+
+#%% get GPS location if pushbutton was pressed
 wake_reason = machine.wake_reason()[0]                          # tuple of (wake_reason, GPIO_list)
 if wake_reason == machine.PIN_WAKE:
-    # power up GPS and wait for it to start sending messages
-    use_gps = True
-    gps_en = machine.Pin('P22', mode=machine.Pin.OUT)
-    gps_en.hold(False)
-    gps_en.value(1)
-    com2 = machine.UART(2, pins=('P3', 'P4'),  baudrate=9600)   # GPS sensor
+    
+    gps_en.value(0)                                             # enable GPS power
+    com2 = machine.UART(2, pins=('P3', 'P4'),  baudrate=9600)   # GPS communication
 
     display.poweron()
     display.fill(0)
@@ -34,9 +32,8 @@ if wake_reason == machine.PIN_WAKE:
             for x in my_sentence:
                 gps.update(chr(x))                              # decode it through micropyGPS
 
-        if gps.latitude > 0 and gps.longitude > 0:              # once we found valid data, power off GPS module and show it
-            gps_en.value(0)
-            gps_en.hold(True)
+        if gps.latitude > 0 and gps.longitude > 0:              # once we found valid data, power off GPS module and show data on display
+            gps_en.value(1)                                     # disable GPS power
 
             print("GPS: NB %f, OL %f, H %f" % (gps.latitude, gps.longitude, gps.altitude))
             display.text("GPS locatie:",           1, 11)
@@ -62,11 +59,11 @@ if wake_reason == machine.RTC_WAKE or wake_reason == machine.PIN_WAKE:
     temperature =   struct.unpack('f', previous_values[1])[0]
     pressure  =     struct.unpack('f', previous_values[2])[0]
     humidity =      struct.unpack('f', previous_values[3])[0]
-    dBm =           struct.unpack('i', previous_values[4])[0]
+    dBm =           struct.unpack('f', previous_values[4])[0]
     light =         struct.unpack('i', previous_values[5])[0]
     uv_raw =        struct.unpack('i', previous_values[6])[0]
     tVOC =          struct.unpack('i', previous_values[7])[0]
-    ppm_co2 =       struct.unpack('i', previous_values[8])[0]
+    co2 =           struct.unpack('i', previous_values[8])[0]
     pm_25 =         struct.unpack('f', previous_values[9])[0]
     pm_100 =        struct.unpack('f', previous_values[10])[0]
 
@@ -108,20 +105,23 @@ if settings.DEBUG_MODE == False:
         s.setblocking(True)
         
         # create cayenne LPP packet
-        lpp = CayenneLPP(size = 43 + use_gps*11, sock = s)  # set payload size; default is 43 but if GPS has to be sent, add another 11 bytes
-        lpp.add_analog_input(batt_volt, channel = 0)        # 1+1+2=4: 0.01 V accurate
+        if wake_reason == machine.PIN_WAKE:
+            lpp = CayenneLPP(size = 53, sock = s)           # set payload size; 42 base + 11 GPS
+            lpp.add_gps(gps.latitude, gps.longitude, gps.altitude, channel = 11)    # 1+1+9=11: 0.0001, 0.0001 and 0.01 accurate resp.
+        else:
+            lpp = CayenneLPP(size = 42, sock = s)
+
+        lpp.add_analog_input(batt_volt, channel = 0)        # 1+1+2=4: 0.01 V accurate                      TODO humidity??
         lpp.add_temperature(temperature, channel = 1)       # 1+1+2=4: 0.1 C accurate
         lpp.add_barometric_pressure(pressure, channel = 2)  # 1+1+2=4: 0.1 hPa accurate
-        lpp.add_relative_humidity(humidity, channel = 3)    # 1+1+1=3: 0.5% accurate (range 0-100)
-        lpp.add_luminosity(dBm, channel = 4)                # 1+1+2=4: 1 accurate (range 0-80)              TODO: use humidity once it gives more reliable results
+        lpp.add_relative_humidity(humidity, channel = 3)    # 1+1+1=3: 0.5% accurate  (range 0-100)
+        lpp.add_relative_humidity(dBm, channel = 4)         # 1+1+1=3: 0.5 accurate   (range 0-80)
         lpp.add_luminosity(light, channel = 5)              # 1+1+2=4: 1 lux accurate (range 0-65536)
-        lpp.add_luminosity(uv_raw, channel = 6)             # 1+1+2=4: 1 lux accurate (range 0-9999)
+        lpp.add_luminosity(uv_raw, channel = 6)             # 1+1+2=4: 1 lux accurate (range 0-9999)        TODO humidity??
         lpp.add_luminosity(tVOC, channel = 7)               # 1+1+2=4: 1 ppb accurate (range 0-1187)
-        lpp.add_luminosity(ppm_co2, channel = 8)            # 1+1+2=4: 1 ppm accurate (range 0-65536)
+        lpp.add_luminosity(co2, channel = 8)                # 1+1+2=4: 1 ppm accurate (range 0-65536)
         lpp.add_barometric_pressure(pm_25, channel = 9)     # 1+1+2=4: 0.1 ug/m3 accurate (range 0.0-999.9) TODO humidity??
         lpp.add_barometric_pressure(pm_100, channel = 10)   # 1+1+2=4: 0.1 ug/m3 accurate (range 0.0-999.9) TODO humidity??
-        if use_gps:
-            lpp.add_gps(gps.latitude, gps.longitude, gps.altitude, channel = 11)    # 1+1+9=11: 0.0001, 0.0001 and 0.01 accurate resp.
         lpp.send(reset_payload = True)
 
     # we don't need LoRa anymore so we save LoRa object to NVRAM and profit from machine.sleep's reduced power consumption
@@ -131,13 +131,13 @@ if settings.DEBUG_MODE == False:
 from lib.SDS011 import SDS011
 from lib.MQ135 import MQ135
 
-mq135_en = machine.Pin('8', mode=machine.Pin.OUT)          # MQ135 VIN pin
+mq135_en = machine.Pin('P8', mode=machine.Pin.OUT)          # MQ135 VIN pin
 mq135_en.hold(False)                                        # disable hold from deepsleep
 mq135_en.value(1)                                           # preheat
 mq135 = MQ135('P17')                                        # CO2 sensor
                                                             # active: 40 mA, sleep: 0.0 mA
 
-sds011_en = machine.Pin('P21', mode=machine.Pin.OUT)        # 5V voltage regulator SHDN pin
+sds011_en = machine.Pin('P21', mode=machine.Pin.OUT)        # voltage regulator SHDN pin
 sds011_en.hold(False)                                       # disable hold from deepsleep
 sds011_en.value(1)                                          # start fan and laser
 com = machine.UART(1, pins=('P20', 'P19'), baudrate=9600)   # UART communication to SDS011
@@ -153,33 +153,33 @@ if wake_reason == machine.RTC_WAKE or wake_reason == machine.PIN_WAKE:
         print("Luchtvochtigheid: %d"    % humidity)
         print("Fijnstof 2.5, 10: %.2f, %.2f" % (pm_25, pm_100))
         print("Volume: %d"              % dBm)
-        print("VOC, CO2: %d %d"         % (tVOC, ppm_co2))
+        print("VOC, CO2: %d %d"         % (tVOC, co2))
         print("UV index: %d"            % uv_raw)
         print("Lux: %d"                 % light)
-        print("Voltage: %.3f, %d %%"    % (batt_volt, batt_perc))
+        print("Voltage: %.3f, +/-%d %%" % (batt_volt, batt_perc))
     display.poweron()
     display.fill(0)
     display.text("Temp: %.2f"     % temperature, 1,  1)
     display.text("Druk: %.2f "    % pressure,    1, 11)
     display.text("Vocht: %d %%"   % humidity,    1, 21)
     display.text("Lux: %d"        % light,       1, 31)
-    display.text("UV index: %s"   % uv_raw,      1, 41)
-    display.text("Accu: ~ %d %%"  % batt_perc,   1, 54)
+    display.text("UV: %s"         % uv_raw,      1, 41)
+    display.text("Accu: +/-%d %%" % batt_perc,   1, 54)
     display.show()
     machine.sleep(settings.DISPLAY_TIME * 1000)
     display.fill(0)
     display.text("Stof 2.5: %.2f" % pm_25,     1,  1)
     display.text("Stof 10: %.2f"  % pm_100,    1, 11)
     display.text("VOC: %d"        % tVOC,      1, 21)
-    display.text("CO2: %d"        % ppm_co2,   1, 31)
+    display.text("CO2: %d"        % co2,       1, 31)
     display.text("Volume: %d"     % dBm,       1, 41)
-    display.text("Accu: ~ %d %%"  % batt_perc, 1, 54)
+    display.text("Accu: +/-%d %%" % batt_perc, 1, 54)
     display.show()
     machine.sleep(settings.DISPLAY_TIME * 1000)
     display.fill(0)
     display.poweroff()
 
-    machine.sleep((settings.WAKE_TIME - settings.PEAK_TIME - 2*settings.DISPLAY_TIME) * 1000)   # residue of stabilizing time
+    machine.sleep((settings.WAKE_TIME - settings.PEAK_TIME - 2*settings.DISPLAY_TIME) * 1000)   # residue of stabilization time
 else:
     machine.sleep((settings.WAKE_TIME - settings.PEAK_TIME) * 1000)
 
@@ -188,12 +188,8 @@ while not sds011.read():    # make sure we get response from SDS011
 
 pm_25 = sds011.pm25
 pm_100 = sds011.pm10
-sds011_en.value(0)          # disable 5V voltage regulator
+sds011_en.value(0)          # disable voltage regulator
 sds011_en.hold(True)        # hold pin low during deepsleep
-
-ppm_co2 = sum([mq135.get_corrected_ppm(20, 50) for _ in range(3)]) / 3
-mq135_en.value(0)           # disable heating element
-mq135_en.hold(True)         # hold pin low during deepsleep
 
 
 #%% get other sensors' values and put them to sleep immediately after
@@ -202,7 +198,7 @@ from lib.TSL2591 import TSL2591
 from lib.BME680 import BME680
 
 bme680 =     BME680(i2c=i2c_bus, address=0x77)              # temp, pres, hum, VOC sensor
-                                                            # active: 22 mA, sleep: 0.7 mA (forced query mode)
+                                                            # active: 22 mA, sleep: 0.0 mA
 bme680.temperature_oversample = 16                          # maximum accuracy
 bme680.humidity_oversample = 16
 bme680.pressure_oversample = 16
@@ -215,13 +211,15 @@ bme680.set_power_mode(0)
 
 polls = 3   # poll some sensors multiple times for more reliable values
 
+co2 = sum([mq135.get_corrected_ppm(temperature, humidity) for _ in range(polls)]) / polls
+mq135_en.value(0)           # disable heating element
+mq135_en.hold(True)         # hold pin low during deepsleep
+
 veml6070 = VEML6070(i2c=i2c_bus, address=56)                # UV sensor
                                                             # active: 0.0 mA, sleep: 0.0 mA
 uv_raw = sum([veml6070.uv_raw for _ in range(polls)]) / polls
-uv_raw = max(1, uv_raw) # same
-uv_index = veml6070.get_index(uv_raw)
+uv_raw = max(1, uv_raw) # prevent sending zeroes over Cayenne which messes with the decoding
 veml6070.sleep()
-
 
 tsl2591 =  TSL2591(i2c=i2c_bus, address=0x29)               # lux sensor
                                                             # active: 0.0 mA, sleep: 0.0 mA
@@ -239,21 +237,22 @@ dBm = (40 * loudness_voltage - 20)  # https://forum.arduino.cc/t/dbm-from-max446
 
 
 #%% hibernate, but restart to GPS mode if push button is pressed
-push_button = machine.Pin('P23', mode=machine.Pin.IN, pull=machine.Pin.PULL_DOWN)
-machine.pin_sleep_wakeup(['P23'], mode=machine.WAKEUP_ANY_HIGH, enable_pull=True)
-
 # write all values to psRAM to send during next wake
 memory_string = ( struct.pack('f', float(batt_volt)) + delimiter
                 + struct.pack('f', float(temperature)) + delimiter
                 + struct.pack('f', float(pressure)) + delimiter
                 + struct.pack('f', float(humidity)) + delimiter
-                + struct.pack('i', int(dBm)) + delimiter
+                + struct.pack('f', float(dBm)) + delimiter
                 + struct.pack('i', int(light)) + delimiter
                 + struct.pack('i', int(uv_raw)) + delimiter
                 + struct.pack('i', int(tVOC)) + delimiter
-                + struct.pack('i', int(ppm_co2)) + delimiter
+                + struct.pack('i', int(co2)) + delimiter
                 + struct.pack('f', float(pm_25)) + delimiter
                 + struct.pack('f', float(pm_100)))
 rtc.memory(memory_string)
 
+gps_en.hold(True)
+
+push_button = machine.Pin('P23', mode=machine.Pin.IN, pull=machine.Pin.PULL_DOWN)
+machine.pin_sleep_wakeup(['P23'], mode=machine.WAKEUP_ANY_HIGH, enable_pull=True)
 machine.deepsleep(settings.SLEEP_TIME * 1000)

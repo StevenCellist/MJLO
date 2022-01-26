@@ -45,7 +45,7 @@ De vermoedde accuduur is (ruim) drie weken, waarbij het zonnepaneel buiten besch
 ![Stroomgebruik MJLO-12 op v19.01.22](Stroomgebruik_v19_01_22.png)
 
 ## Schema
-Zie [dit bestand](Schematic_Meet_je_leefomgeving_2022-01-19.pdf) voor de opbouw van het circuit in de sensorkastjes.
+Zie [dit bestand](Schematic_Meet_je_leefomgeving_2022-01-26.pdf) voor de opbouw van het circuit in de sensorkastjes.
 
 ## Libraries
 De libraries in deze repository zijn overgenomen van bestaande Circuit- of MicroPython en vervolgens zo ver als mogelijk gestript om de import-tijden beperkt te houden. CircuitPython libraries zijn waar nodig omgebouwd om met MicroPython te kunnen gebruiken.  
