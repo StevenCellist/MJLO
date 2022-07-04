@@ -25,6 +25,7 @@ if wake_reason == machine.PIN_WAKE:
     display.text("GPS gestart!", 1, 1)
     display.show()
     
+    t1 = time.time()
     while True:
         while com2.any():                                       # wait for incoming communication
             print('.', end = '')
@@ -32,7 +33,7 @@ if wake_reason == machine.PIN_WAKE:
             for x in my_sentence:
                 gps.update(chr(x))                              # decode it through micropyGPS
 
-        if gps.latitude > 0 and gps.longitude > 0:              # once we found valid data, power off GPS module and show data on display
+        if (gps.latitude > 0 and gps.longitude > 0) or time.time() - t1 > 60:   # once we found valid data, power off GPS module and show data on display
             gps_en.value(1)                                     # disable GPS power
 
             print("GPS: NB %f, OL %f, H %f" % (gps.latitude, gps.longitude, gps.altitude))
@@ -82,9 +83,15 @@ if settings.DEBUG_MODE == False:
     lora = network.LoRa(mode = network.LoRa.LORAWAN, region = network.LoRa.EU868, sf = settings.LORA_SF)            # create LoRa object
     
     if wake_reason != machine.RTC_WAKE and wake_reason != machine.PIN_WAKE:
-        app_eui = ubinascii.unhexlify(settings.APP_EUI)
-        app_key = ubinascii.unhexlify(settings.APP_KEY)
-        lora.join(activation = network.LoRa.OTAA, auth = (app_eui, app_key), timeout = 0, dr = settings.LORA_DR)    # join with SF9
+        #app_eui = ubinascii.unhexlify(settings.APP_EUI)
+        #app_key = ubinascii.unhexlify(settings.APP_KEY)
+        #lora.join(activation = network.LoRa.OTAA, auth = (app_eui, app_key), timeout = 0, dr = settings.LORA_DR)    # join with SF9
+        
+        dev_addr = struct.unpack(">l", ubinascii.unhexlify('260BD834'))[0]
+        nwk_swkey = ubinascii.unhexlify('ABA8C83456AA7F0537BD1998017F77F0')
+        app_swkey = ubinascii.unhexlify('0C4A1DD8684BFC394705D06963E1E690')
+        lora.join(activation = network.LoRa.ABP, auth = (dev_addr, nwk_swkey, app_swkey), dr = settings.LORA_DR)
+        
         display.poweron()
         display.text("Verbinden...", 1, 1)
         display.show()
@@ -93,7 +100,7 @@ if settings.DEBUG_MODE == False:
         while not lora.has_joined():
             print('.', end = '')
             time.sleep(0.5)
-
+            
         display.text("Verbonden!", 1, 11)
         display.show()
 
@@ -134,7 +141,7 @@ from lib.MQ135 import MQ135
 mq135_en = machine.Pin('P8', mode=machine.Pin.OUT)          # MQ135 VIN pin
 mq135_en.hold(False)                                        # disable hold from deepsleep
 mq135_en.value(1)                                           # preheat
-mq135 = MQ135('P17')                                        # CO2 sensor
+mq135 = MQ135('P16')                                        # CO2 sensor
                                                             # active: 40 mA, sleep: 0.0 mA
 
 sds011_en = machine.Pin('P21', mode=machine.Pin.OUT)        # voltage regulator SHDN pin
@@ -183,7 +190,8 @@ if wake_reason == machine.RTC_WAKE or wake_reason == machine.PIN_WAKE:
 else:
     machine.sleep((settings.WAKE_TIME - settings.PEAK_TIME) * 1000)
 
-while not sds011.read():    # make sure we get response from SDS011
+t1 = time.time()
+while (not sds011.read()) and (time.time() - t1 < 5):    # try to get a response from SDS011 within 5 seconds
     pass
 
 pm_25 = sds011.pm25

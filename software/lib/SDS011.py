@@ -50,8 +50,8 @@ class SDS011:
         return header + cmd + mode + param + padding + checksum + tail
 
     def get_response(self, command_ID):
-        # try for 120 bytes (0.1) second to get a response from sensor (typical response time 12~33 bytes)
-        for _ in range(120):
+        # try for 120 bytes (0.2) second to get a response from sensor (typical response time 12~33 bytes)
+        for _ in range(240):
             try:
                 header = self._uart.read(1)
                 if header == b'\xaa':

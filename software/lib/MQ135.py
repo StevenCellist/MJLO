@@ -57,7 +57,11 @@ class MQ135(object):
         """Returns the ppm of CO2 sensed (assuming only CO2 in the air)
         corrected for temperature/humidity"""
         g_cr = self.get_corrected_resistance(temperature, humidity)
-        return self.PARA * math.pow((g_cr / self.RZERO), -self.PARB)
+        try:
+            val = self.PARA * math.pow((g_cr / self.RZERO), -self.PARB)
+        except:
+            val = 0
+        return val
 
     def get_rzero(self):
         """Returns the resistance RZero of the sensor (in kOhms) for calibration purposes"""
