@@ -3,7 +3,6 @@
 # Copyright (c) 2017 Michael Calvin McCoy (calvin.mccoy@protonmail.com)
 # The MIT License (MIT) - see LICENSE file
 """
-import utime
 
 class MicropyGPS(object):
     """GPS NMEA Sentence Parser. Creates object that stores all relevant GPS data and statistics.
@@ -26,12 +25,6 @@ class MicropyGPS(object):
         self.gps_segments = []
         self.crc_xor = 0
         self.char_count = 0
-        self.fix_time = 0
-
-        # Sentence Statistics
-        self.crc_fails = 0
-        self.clean_sentences = 0
-        self.parsed_sentences = 0
 
         # Data From Sentences
         # Time
@@ -42,25 +35,15 @@ class MicropyGPS(object):
         # Position/Motion
         self._latitude = [0, 0.0, 'N']
         self._longitude = [0, 0.0, 'W']
-        self.coord_format = 'ddm'
         self.speed = [0.0, 0.0, 0.0]
         self.course = 0.0
         self.altitude = 0.0
-        self.geoid_height = 0.0
 
         # GPS Info
-        self.satellites_in_view = 0
         self.satellites_in_use = 0
-        self.satellites_used = []
-        self.last_sv_sentence = 0
-        self.total_sv_sentences = 0
-        self.satellite_data = dict()
         self.hdop = 0.0
-        self.pdop = 0.0
-        self.vdop = 0.0
         self.valid = False
         self.fix_stat = 0
-        self.fix_type = 1
 
     # Coordinates Translation Functions
     @property
@@ -167,9 +150,6 @@ class MicropyGPS(object):
             self.course = course
             self.valid = True
 
-            # Update Last Fix Time
-            self.new_fix_time()
-
         else:  # Clear Position Data if Sentence is 'Invalid'
             self._latitude = [0, 0.0, 'N']
             self._longitude = [0, 0.0, 'W']
@@ -227,9 +207,6 @@ class MicropyGPS(object):
             self._latitude = [lat_degs, lat_mins, lat_hemi]
             self._longitude = [lon_degs, lon_mins, lon_hemi]
             self.valid = True
-
-            # Update Last Fix Time
-            self.new_fix_time()
 
         else:  # Clear Position Data if Sentence is 'Invalid'
             self._latitude = [0, 0.0, 'N']
@@ -299,16 +276,13 @@ class MicropyGPS(object):
             # Altitude / Height Above Geoid
             try:
                 altitude = float(self.gps_segments[9])
-                geoid_height = float(self.gps_segments[11])
             except ValueError:
                 altitude = 0
-                geoid_height = 0
 
             # Update Object Data
             self._latitude = [lat_degs, lat_mins, lat_hemi]
             self._longitude = [lon_degs, lon_mins, lon_hemi]
             self.altitude = altitude
-            self.geoid_height = geoid_height
 
         # Update Object Data
         self.timestamp = [hours, minutes, seconds]
@@ -316,15 +290,7 @@ class MicropyGPS(object):
         self.hdop = hdop
         self.fix_stat = fix_stat
 
-        # If Fix is GOOD, update fix timestamp
-        if fix_stat:
-            self.new_fix_time()
-
         return True
-
-    ##########################################
-    # Data Stream Handler Functions
-    ##########################################
 
     def new_sentence(self):
         """Adjust Object Flags in Preparation for a New Sentence"""
@@ -380,8 +346,6 @@ class MicropyGPS(object):
                                 final_crc = int(self.gps_segments[self.active_segment], 16)
                                 if self.crc_xor == final_crc:
                                     valid_sentence = True
-                                else:
-                                    self.crc_fails += 1
                             except ValueError:
                                 pass  # CRC Value was deformed and could not have been correct
 
@@ -391,7 +355,6 @@ class MicropyGPS(object):
 
                 # If a Valid Sentence Was received and it's a supported sentence, then parse it!!
                 if valid_sentence:
-                    self.clean_sentences += 1  # Increment clean sentences received
                     self.sentence_active = False  # Clear Active Processing Flag
 
                     if self.gps_segments[0] in self.supported_sentences:
@@ -400,7 +363,6 @@ class MicropyGPS(object):
                         if self.supported_sentences[self.gps_segments[0]](self):
 
                             # Let host know that the GPS object was updated by returning parsed sentence type
-                            self.parsed_sentences += 1
                             return self.gps_segments[0]
 
                 # Check that the sentence buffer isn't filling up with Garage waiting for the sentence to complete
@@ -410,42 +372,13 @@ class MicropyGPS(object):
         # Tell Host no new sentence was parsed
         return None
 
-    def new_fix_time(self):
-        """Updates a high resolution counter with current time when fix is updated. Currently only triggered from
-        GGA, GSA and RMC sentences"""
-        self.fix_time = utime.ticks_ms()
-
-    #########################################
-    # User Helper Functions
-    # These functions make working with the GPS object data easier
-    #########################################
-
-    def date_string(self, century='20'):
+    def date_string(self, century = 20):
         """
         01/11/2014 (DD/MM/YYYY)
-        :param century: int delineating the century the GPS data is from (19 for 19XX, 20 for 20XX)
-        :return: date_string  string with short format date
+        :return: date_string  string with short format date with padded zeroes
         """
 
-        # Add leading zeros to day string if necessary
-        if self.date[0] < 10:
-            day = '0' + str(self.date[0])
-        else:
-            day = str(self.date[0])
-
-        # Add leading zeros to month string if necessary
-        if self.date[1] < 10:
-            month = '0' + str(self.date[1])
-        else:
-            month = str(self.date[1])
-
-        # Add leading zeros to year string if necessary
-        if self.date[2] < 10:
-            year = '0' + str(self.date[2])
-        else:
-            year = str(self.date[2])
-
-        return day + '/' + month + '/' + year
+        return "{:0>2}/{:0>2}/{}{:0>2}".format(self.date[0], self.date[1], century, self.date[2])
 
     # All the currently supported NMEA sentences
     supported_sentences = {'GPRMC': gprmc, 'GLRMC': gprmc,

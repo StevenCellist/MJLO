@@ -1,11 +1,12 @@
 """
-CayenneLPP module.
+CayenneLPP module (https://github.com/jojo-/py-cayenne-lpp)
 
 The constants have the format NAME_SENSOR = (LPP id, Data size) where LPP id
 is the IPSO id - 3200 and Data size is the number of bytes that must be used
 to encode the reading from the sensor.
 
 https://mydevices.com/cayenne/docs/lora/#lora-cayenne-low-power-payload-overview
+https://techlibrary.hpe.com/docs/otlink-wo/IPSO-Object-Reference-Guide.html#IPSOObjectReferenceGuide-IPSOObjects(Seealso,)
 """
 
 import struct
@@ -30,20 +31,13 @@ class CayenneLPP:
     sensor is defined by: [CHANNEL, SENSOR TYPE, DATA].
     """
 
-    def __init__(self, size = 11, sock = None):
-
-        if size < 3:
-            size = 3
-
+    def __init__(self, size, sock):
         self.size = size
         self.payload = bytes()
         self.socket = sock
 
     def is_within_size_limit(self, a_size):
-        """
-        Check if adding data will result in a payload size below size
-        """
-
+        """ Check if adding data will result in a payload size below size """
         if (len(self.payload) + a_size + 2) <= self.size:   # + 2 for 1 channel byte and 1 sensortype byte
             return True
         return False
@@ -58,19 +52,11 @@ class CayenneLPP:
         return len(self.payload)
 
     def send(self, reset_payload = False):
-        """
-        Args:
-            reset_payload: Indicates whether the payload must be reset after
-                           the transmission (i.e. if a socket is defined).
-        """
-
-        if self.socket is None:
-            return False
-        else:
-            self.socket.send(self.payload)
-            if reset_payload:
-                self.reset_payload()
-            return True
+        """  reset_payload: Indicates whether the payload must be reset after the transmission. """
+        self.socket.send(self.payload)
+        if reset_payload:
+            self.reset_payload()
+        return True
 
     def add_analog_input(self, value, channel = 3):
         # Resolution: 0.01, signed.

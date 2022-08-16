@@ -1,16 +1,16 @@
-## Here we store settings, credentials and constants.
+# LoRa config
+LORA_MODE = 'ABP'
+NODE = 18
 
-# LoRa config info
-APP_EUI = '30AEA47870B40000'
-APP_KEY = '93F032DE681792632F0B928B555DAAB8'
-LORA_SF = 12             # LoRa Spreading Factor (7 to 12)
-LORA_DR = 12 - LORA_SF  # Data Rate complement of Spreading Factor (counted inversely from 0 to 5)
+SF_LOW = 10         # lower Spreading Factor for Blind ADR
+SF_HIGH = 12        # upper Spreading Factor for Blind ADR
+FRACTION = 3        # every FRACTION'th message is sent on SF_HIGH, others on SF_LOW
 
-MEASURE_INTERVAL = 60  # measure every ... seconds
-BOOT_TIME = 3           # time in seconds (approx) it takes to start SDS011 from poweron
-WAKE_TIME = 32          # time in seconds that the SDS011 and MQ135 need to stabilize
-PEAK_TIME = 6           # time in seconds to wait after starting voltage regulator
-DISPLAY_TIME = 6        # time in seconds to display values on the internal display
-SLEEP_TIME = MEASURE_INTERVAL - BOOT_TIME - WAKE_TIME
+# time config
+T_INTERVAL = 600    # measure every ... seconds
+T_DISPLAY = 10      # time to show a page of values on the display
+T_WAKE = 28         # time for CO2 and PM sensor to wake and stabilize
 
-DEBUG_MODE = False
+# debug config
+DEBUG = False
+T_DEBUG = 60        # measure every ... seconds (debug only)

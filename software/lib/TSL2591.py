@@ -1,4 +1,4 @@
-# tsl2591 lux sensor interface by jfisher adapted by Icr3ate
+# TSL2591 lux sensor interface modified by Steven Boonstoppel
 import time
 
 VISIBLE = 2
@@ -46,68 +46,56 @@ GAIN_MED = 0x10
 GAIN_HIGH = 0x20
 GAIN_MAX = 0x30
 
-def _bytes_to_int(data):
-    return data[0] + (data[1]<<8)
-
-class SMBusEmulator:
-    __slots__ = ('i2c',)
-    def __init__(self, i2c_bus):
-        self.i2c = i2c_bus
-
-    def write_byte_data(self, addr, cmd, val):
-        buf = bytes([cmd, val])
-        self.i2c.writeto(addr, buf)
-
-    def read_word_data(self, addr, cmd):
-        assert cmd < 256
-        buf = bytes([cmd])
-        self.i2c.writeto(addr, buf)
-        data = self.i2c.readfrom(addr, 4)
-        return _bytes_to_int(data)
-
 class TSL2591:
     def __init__(
                  self,
                  i2c,
                  address,
+                 sensor_id = 0x50,
                  integration=INTEGRATIONTIME_100MS,
                  gain=GAIN_LOW
                  ):
-        self.i2c_bus = i2c
-        self.i2c_address = address
-        self.bus = SMBusEmulator(i2c)
+        self.sensor_id = sensor_id
+        self.address = address
+        self.i2c = i2c
         self.integration_time = integration
         self.gain = gain
         self.set_timing(self.integration_time)
         self.set_gain(self.gain)
-        self.sleep()
+
+    def _write(self, register, value):
+        buffer = bytearray(2)
+        buffer[0] = register
+        buffer[1] = value
+        self.i2c.writeto(self.address, buffer)
+
+    def _read(self, register, length):
+        self.i2c.writeto(self.address, bytes([register & 0xFF]))
+        result = self.i2c.readfrom(self.address, length)
+        if length <= 2:
+            return int.from_bytes(result, 'little')
+        return result
 
     def set_timing(self, integration):
-        self.wake()
         self.integration_time = integration
-        self.bus.write_byte_data(
-                    self.i2c_address,
+        self._write(
                     COMMAND_BIT | REGISTER_CONTROL,
                     self.integration_time | self.gain
                     )
-        self.sleep()
 
     def set_gain(self, gain):
-        self.wake()
         self.gain = gain
-        self.bus.write_byte_data(
-                    self.i2c_address,
+        self._write(
                     COMMAND_BIT | REGISTER_CONTROL,
                     self.integration_time | self.gain
                     )
-        self.sleep()
 
-    def calculate_lux(self):
+    @property
+    def lux(self):
         full, ir = self.get_full_luminosity()
-
         if (full == 0xFFFF) | (ir == 0xFFFF):
             return 0
-
+            
         case_integ = {
             INTEGRATIONTIME_100MS: 100.,
             INTEGRATIONTIME_200MS: 200.,
@@ -141,30 +129,37 @@ class TSL2591:
         return max([lux1, lux2])
 
     def wake(self):
-        self.bus.write_byte_data(
-                    self.i2c_address,
+        self._write(
                     COMMAND_BIT | REGISTER_ENABLE,
                     ENABLE_POWERON | ENABLE_AEN | ENABLE_AIEN
                     )
 
     def sleep(self):
-        self.bus.write_byte_data(
-                    self.i2c_address,
+        self._write(
                     COMMAND_BIT | REGISTER_ENABLE,
                     ENABLE_POWEROFF
                     )
 
     def get_full_luminosity(self):
-        self.wake()
-        time.sleep(0.120*self.integration_time)
-        full = self.bus.read_word_data(
-                    self.i2c_address, COMMAND_BIT | REGISTER_CHAN0_LOW
+        time.sleep(0.12 * self.integration_time)
+        full = self._read(
+                    COMMAND_BIT | REGISTER_CHAN0_LOW, 2
                     )
-        ir = self.bus.read_word_data(
-                    self.i2c_address, COMMAND_BIT | REGISTER_CHAN1_LOW
-                    )
-        self.sleep()
+        ir = self._read(
+                    COMMAND_BIT | REGISTER_CHAN1_LOW, 2
+                    )                    
         return full, ir
+
+    def get_luminosity(self, channel):
+        full, ir = self.get_full_luminosity()
+        if channel == FULLSPECTRUM:
+            return full
+        elif channel == INFRARED:
+            return ir
+        elif channel == VISIBLE:
+            return full - ir
+        else:
+            return 0
 
     def sample(self):
         full, ir = self.get_full_luminosity()

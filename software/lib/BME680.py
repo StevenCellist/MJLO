@@ -1,384 +1,244 @@
-import time
+# Adaptation of Pimoroni library by Steven Boonstoppel
 import math
-from micropython import const
+import time
 
-try:
-    import struct
-except ImportError:
-    import ustruct as struct
-
-_BME680_CHIPID = const(0x61)
-
-_BME680_REG_CHIPID = const(0xD0)
-_BME680_BME680_COEFF_ADDR1 = const(0x89)
-_BME680_BME680_COEFF_ADDR2 = const(0xE1)
-_BME680_BME680_RES_HEAT_0 = const(0x5A)
-_BME680_BME680_GAS_WAIT_0 = const(0x64)
-
-_BME680_REG_SOFTRESET = const(0xE0)
-_BME680_REG_CTRL_GAS = const(0x71)
-_BME680_REG_CTRL_HUM = const(0x72)
-_BME680_REG_CTRL_MEAS = const(0x74)
-_BME680_REG_CONFIG = const(0x75)
-
-_BME680_REG_MEAS_STATUS = const(0x1D)
-
-_BME680_SAMPLERATES = (0, 1, 2, 4, 8, 16)
-_BME680_FILTERSIZES = (0, 1, 3, 7, 15, 31, 63, 127)
-
-_BME680_RUNGAS = const(0x10)
-
-CONF_T_P_MODE_ADDR = _BME680_REG_CTRL_MEAS
-MODE_MSK = 0x03
-MODE_POS = 0
 POLL_PERIOD_MS = 10
+SOFT_RESET_CMD = 0xb6
+SOFT_RESET_ADDR = 0xe0
 
-_LOOKUP_TABLE_1 = (
-    2147483647.0,
-    2147483647.0,
-    2147483647.0,
-    2147483647.0,
-    2147483647.0,
-    2126008810.0,
-    2147483647.0,
-    2130303777.0,
-    2147483647.0,
-    2147483647.0,
-    2143188679.0,
-    2136746228.0,
-    2147483647.0,
-    2126008810.0,
-    2147483647.0,
-    2147483647.0,
-)
+ADDR_RES_HEAT_VAL_ADDR = 0x00
+ADDR_RES_HEAT_RANGE_ADDR = 0x02
+ADDR_RANGE_SW_ERR_ADDR = 0x04
 
-_LOOKUP_TABLE_2 = (
-    4096000000.0,
-    2048000000.0,
-    1024000000.0,
-    512000000.0,
-    255744255.0,
-    127110228.0,
-    64000000.0,
-    32258064.0,
-    16016016.0,
-    8000000.0,
-    4000000.0,
-    2000000.0,
-    1000000.0,
-    500000.0,
-    250000.0,
-    125000.0,
-)
+FIELD0_ADDR = 0x1d
+RES_HEAT0_ADDR = 0x5a
+GAS_WAIT0_ADDR = 0x64
 
+CONF_ODR_RUN_GAS_NBC_ADDR = 0x71
+CONF_OS_H_ADDR = 0x72
+CONF_T_P_MODE_ADDR = 0x74
+CONF_ODR_FILT_ADDR = 0x75
 
-def _read24(arr):
-    """Parse an unsigned 24-bit value as a floating point and return it."""
-    ret = 0.0
-    for b in arr:
-        ret *= 256.0
-        ret += float(b & 0xFF)
-    return ret
+COEFF_ADDR1 = 0x89
+COEFF_ADDR2 = 0xe1
 
-class I2CDevice:
+ENABLE_GAS_MEAS_LOW = 0x01
 
-    def __init__(self, i2c, device_address, probe=True):
+# Over-sampling settings
+OS_NONE = 0
+OS_1X = 1
+OS_2X = 2
+OS_4X = 3
+OS_8X = 4
+OS_16X = 5
 
+# IIR filter settings
+FILTER_SIZE_0 = 0
+FILTER_SIZE_1 = 1
+FILTER_SIZE_3 = 2
+FILTER_SIZE_7 = 3
+FILTER_SIZE_15 = 4
+FILTER_SIZE_31 = 5
+FILTER_SIZE_63 = 6
+FILTER_SIZE_127 = 7
+
+# Power mode settings
+SLEEP_MODE = 0
+FORCED_MODE = 1
+
+# Mask definitions
+NBCONV_MSK = 0X0F
+FILTER_MSK = 0X1C
+OST_MSK = 0XE0
+OSP_MSK = 0X1C
+OSH_MSK = 0X07
+HCTRL_MSK = 0x08
+RUN_GAS_MSK = 0x30
+MODE_MSK = 0x03
+RHRANGE_MSK = 0x30
+RSERROR_MSK = 0xf0
+NEW_DATA_MSK = 0x80
+GAS_INDEX_MSK = 0x0f
+GAS_RANGE_MSK = 0x0f
+GASM_VALID_MSK = 0x20
+HEAT_STAB_MSK = 0x10
+BIT_H1_DATA_MSK = 0x0F
+
+# Bit position definitions for sensor settings
+FILTER_POS = 2
+OST_POS = 5
+OSP_POS = 2
+OSH_POS = 0
+RUN_GAS_POS = 4
+MODE_POS = 0
+NBCONV_POS = 0
+
+# Look up tables for the possible gas range values
+lookupTable1 = [2147483647, 2147483647, 2147483647, 2147483647,
+                2147483647, 2126008810, 2147483647, 2130303777, 2147483647,
+                2147483647, 2143188679, 2136746228, 2147483647, 2126008810,
+                2147483647, 2147483647]
+
+lookupTable2 = [4096000000, 2048000000, 1024000000, 512000000,
+                255744255, 127110228, 64000000, 32258064,
+                16016016, 8000000, 4000000, 2000000,
+                1000000, 500000, 250000, 125000]
+
+def bytes_to_word(msb, lsb, bits = 16, signed = True):
+    """Convert a most and least significant byte into a word."""
+    word = (msb << 8) | lsb
+    if signed:
+        word = twos_comp(word, bits)
+    return word
+
+def twos_comp(val, bits = 8):
+    """Convert two bytes into a two's compliment signed word."""
+    if val & (1 << (bits - 1)) != 0:
+        val = val - (1 << bits)
+    return val
+
+class CalibrationData:
+    """Structure for storing BME680 calibration data."""
+
+    def set_from_array(self, calibration):
+        # Temperature related coefficients
+        self.par_t1 = bytes_to_word(calibration[34], calibration[33], signed = False)
+        self.par_t2 = bytes_to_word(calibration[2], calibration[1])
+        self.par_t3 = twos_comp(calibration[3])
+
+        # Pressure related coefficients
+        self.par_p1 = bytes_to_word(calibration[6], calibration[5], signed = False)
+        self.par_p2 = bytes_to_word(calibration[8], calibration[7])
+        self.par_p3 = twos_comp(calibration[9])
+        self.par_p4 = bytes_to_word(calibration[12], calibration[11])
+        self.par_p5 = bytes_to_word(calibration[14], calibration[13])
+        self.par_p6 = twos_comp(calibration[16])
+        self.par_p7 = twos_comp(calibration[15])
+        self.par_p8 = bytes_to_word(calibration[20], calibration[19])
+        self.par_p9 = bytes_to_word(calibration[22], calibration[21])
+        self.par_p10 = calibration[23]
+
+        # Humidity related coefficients
+        self.par_h1 = (calibration[27] << 4) | (calibration[26] & BIT_H1_DATA_MSK)
+        self.par_h2 = (calibration[25] << 4) | (calibration[26] >> 4)
+        self.par_h3 = twos_comp(calibration[28])
+        self.par_h4 = twos_comp(calibration[29])
+        self.par_h5 = twos_comp(calibration[30])
+        self.par_h6 = calibration[31]
+        self.par_h7 = twos_comp(calibration[32])
+
+        # Gas heater related coefficients
+        self.par_gh1 = twos_comp(calibration[37])
+        self.par_gh2 = bytes_to_word(calibration[36], calibration[35])
+        self.par_gh3 = twos_comp(calibration[38])
+
+    def set_other(self, heat_range, heat_value, sw_error):
+        """Set other values."""
+        self.res_heat_range = (heat_range & RHRANGE_MSK) // 16
+        self.res_heat_val = heat_value
+        self.range_sw_err = (sw_error & RSERROR_MSK) // 16
+
+class BME680:
+
+    def __init__(self, i2c, address):
+
+        self.address = address
         self.i2c = i2c
-        self.device_address = device_address
 
-        if probe:
-            self.__probe_for_device()
+        self.power_mode = None
+        self.calibration = CalibrationData()
 
-    def readinto(self, buf):
-        self.i2c.readfrom_into(self.device_address, buf)
+        self.soft_reset()
+        self.set_power_mode(SLEEP_MODE)
 
-    def write(self, buf):
-        self.i2c.writeto(self.device_address, buf)
+        self._get_calibration_data()
 
-    def __enter__(self):
-        return self
+        self.set_humidity_oversample(OS_8X)
+        self.set_pressure_oversample(OS_8X)
+        self.set_temperature_oversample(OS_8X)
+        self.set_filter(FILTER_SIZE_3)
+        self.set_gas_status(ENABLE_GAS_MEAS_LOW)
+        self.set_temp_offset(0)
+        self.get_sensor_data()
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        return False
+    def _get_calibration_data(self):
+        """Retrieve the sensor calibration data and store it in .calibration_data."""
+        calibration = self._read(COEFF_ADDR1, 25)
+        calibration += self._read(COEFF_ADDR2, 16)
 
-    def __probe_for_device(self):
-        try:
-            self.i2c.writeto(self.device_address, b"")
-        except OSError:
-            # some OS's dont like writing an empty bytesting...
-            # Retry by reading a byte
-            try:
-                result = bytearray(1)
-                self.i2c.readfrom_into(self.device_address, result)
-            except OSError:
-                # pylint: disable=raise-missing-from
-                raise ValueError("No I2C device at address: 0x%x" % self.device_address)
-                # pylint: enable=raise-missing-from
+        heat_range = self._read(ADDR_RES_HEAT_RANGE_ADDR, 1)
+        heat_value = twos_comp(self._read(ADDR_RES_HEAT_VAL_ADDR, 1))
+        sw_error = twos_comp(self._read(ADDR_RANGE_SW_ERR_ADDR, 1))
 
-class Adafruit_BME680:
-    """Driver from BME680 air quality sensor
+        self.calibration.set_from_array(calibration)
+        self.calibration.set_other(heat_range, heat_value, sw_error)
 
-    :param int refresh_rate: Maximum number of readings per second. Faster property reads
-      will be from the previous reading."""
+    def soft_reset(self):
+        """Trigger a soft reset."""
+        self._write(SOFT_RESET_ADDR, SOFT_RESET_CMD)
+        time.sleep(POLL_PERIOD_MS / 1000.0)
 
-    def __init__(self, *, refresh_rate=10):
-        """Check the BME680 was found, read the coefficients and enable the sensor for continuous
-        reads."""
-        self._write(_BME680_REG_SOFTRESET, [0xB6])
-        time.sleep(0.05)
-
-        # Check device ID.
-        chip_id = self._read_byte(_BME680_REG_CHIPID)
-        if chip_id != _BME680_CHIPID:
-            raise RuntimeError("Failed to find BME680! Chip ID 0x%x" % chip_id)
-
-        self._read_calibration()
-
-        # set up heater
-        self._write(_BME680_BME680_RES_HEAT_0, [0x73])
-        self._write(_BME680_BME680_GAS_WAIT_0, [0x65])
-
-        self.sea_level_pressure = 1013.25
-        """Pressure in hectoPascals at sea level. Used to calibrate :attr:`altitude`."""
-
-        # Default oversampling and filter register values.
-        self._pressure_oversample = 0b011
-        self._temp_oversample = 0b100
-        self._humidity_oversample = 0b010
-        self._filter = 0b010
-
-        self._adc_pres = None
-        self._adc_temp = None
-        self._adc_hum = None
-        self._adc_gas = None
-        self._gas_range = None
-        self._t_fine = None
-
-        self._last_reading = 0
-        self._min_refresh_time = 1 / refresh_rate
-
-    @property
-    def pressure_oversample(self):
-        """The oversampling for pressure sensor"""
-        return _BME680_SAMPLERATES[self._pressure_oversample]
-
-    @pressure_oversample.setter
-    def pressure_oversample(self, sample_rate):
-        if sample_rate in _BME680_SAMPLERATES:
-            self._pressure_oversample = _BME680_SAMPLERATES.index(sample_rate)
+    def set_temp_offset(self, value):
+        """Set temperature offset in celsius.
+        If set, the temperature t_fine will be increased by given value in celsius.
+        :param value: Temperature offset in Celsius, eg. 4, -8, 1.25
+        """
+        if value == 0:
+            self.offset_temp_in_t_fine = 0
         else:
-            raise RuntimeError("Invalid oversample")
+            self.offset_temp_in_t_fine = int(math.copysign((((int(abs(value) * 100)) << 8) - 128) / 5, value))
 
-    @property
-    def humidity_oversample(self):
-        """The oversampling for humidity sensor"""
-        return _BME680_SAMPLERATES[self._humidity_oversample]
+    def set_humidity_oversample(self, value):
+        self._set_bits(CONF_OS_H_ADDR, OSH_MSK, OSH_POS, value)
 
-    @humidity_oversample.setter
-    def humidity_oversample(self, sample_rate):
-        if sample_rate in _BME680_SAMPLERATES:
-            self._humidity_oversample = _BME680_SAMPLERATES.index(sample_rate)
-        else:
-            raise RuntimeError("Invalid oversample")
+    def set_pressure_oversample(self, value):
+        self._set_bits(CONF_T_P_MODE_ADDR, OSP_MSK, OSP_POS, value)
 
-    @property
-    def temperature_oversample(self):
-        """The oversampling for temperature sensor"""
-        return _BME680_SAMPLERATES[self._temp_oversample]
+    def set_temperature_oversample(self, value):
+        self._set_bits(CONF_T_P_MODE_ADDR, OST_MSK, OST_POS, value)
 
-    @temperature_oversample.setter
-    def temperature_oversample(self, sample_rate):
-        if sample_rate in _BME680_SAMPLERATES:
-            self._temp_oversample = _BME680_SAMPLERATES.index(sample_rate)
-        else:
-            raise RuntimeError("Invalid oversample")
+    def set_filter(self, value):
+        """Set IIR filter size.
+        Optionally remove short term fluctuations from the temperature and pressure readings,
+        increasing their resolution but reducing their bandwidth.
+        Enabling the IIR filter does not slow down the time a reading takes, but will slow
+        down the BME680s response to changes in temperature and pressure.
+        When the IIR filter is enabled, the temperature and pressure resolution is effectively 20bit.
+        When it is disabled, it is 16bit + oversampling-1 bits.
+        """
+        self._set_bits(CONF_ODR_FILT_ADDR, FILTER_MSK, FILTER_POS, value)
 
-    @property
-    def filter_size(self):
-        """The filter size for the built in IIR filter"""
-        return _BME680_FILTERSIZES[self._filter]
+    def get_filter(self):
+        return (self._read(CONF_ODR_FILT_ADDR, 1) & FILTER_MSK) >> FILTER_POS
 
-    @filter_size.setter
-    def filter_size(self, size):
-        if size in _BME680_FILTERSIZES:
-            self._filter = _BME680_FILTERSIZES.index(size)
-        else:
-            raise RuntimeError("Invalid size")
+    def select_gas_heater_profile(self, value):
+        """Set current gas sensor conversion profile.
+        Select one of the 10 configured heating durations/set points.
+        :param value: Profile index from 0 to 9
+        """
+        self._set_bits(CONF_ODR_RUN_GAS_NBC_ADDR, NBCONV_MSK, NBCONV_POS, value)
 
-    @property
-    def temperature(self):
-        """The compensated temperature in degrees Celsius."""
-        self._perform_reading()
-        calc_temp = ((self._t_fine * 5) + 128) / 256
-        return calc_temp / 100
+    def set_gas_status(self, value):
+        """Enable/disable gas sensor."""
+        self._set_bits(CONF_ODR_RUN_GAS_NBC_ADDR, RUN_GAS_MSK, RUN_GAS_POS, value)
 
-    @property
-    def pressure(self):
-        """The barometric pressure in hectoPascals"""
-        self._perform_reading()
-        var1 = (self._t_fine / 2) - 64000
-        var2 = ((var1 / 4) * (var1 / 4)) / 2048
-        var2 = (var2 * self._pressure_calibration[5]) / 4
-        var2 = var2 + (var1 * self._pressure_calibration[4] * 2)
-        var2 = (var2 / 4) + (self._pressure_calibration[3] * 65536)
-        var1 = ((((var1 / 4) * (var1 / 4)) / 8192) * (self._pressure_calibration[2] * 32)/ 8) + ((self._pressure_calibration[1] * var1) / 2)
-        var1 = var1 / 262144
-        var1 = ((32768 + var1) * self._pressure_calibration[0]) / 32768
-        calc_pres = 1048576 - self._adc_pres
-        calc_pres = (calc_pres - (var2 / 4096)) * 3125
-        calc_pres = (calc_pres / var1) * 2
-        var1 = (self._pressure_calibration[8] * (((calc_pres / 8) * (calc_pres / 8)) / 8192)) / 4096
-        var2 = ((calc_pres / 4) * self._pressure_calibration[7]) / 8192
-        var3 = (((calc_pres / 256) ** 3) * self._pressure_calibration[9]) / 131072
-        calc_pres += (var1 + var2 + var3 + (self._pressure_calibration[6] * 128)) / 16
-        return calc_pres / 100
+    def set_gas_heater_temperature(self, value, nb_profile=0):
+        """Set gas sensor heater temperature.
+        :param value: Target temperature in degrees celsius, between 200 and 400
+        """
+        temp = int(self._calc_heater_resistance(value))
+        self._write(RES_HEAT0_ADDR + nb_profile, temp)
 
-    @property
-    def relative_humidity(self):
-        """The relative humidity in RH %"""
-        return self.humidity
+    def set_gas_heater_duration(self, value, nb_profile=0):
+        """Set gas sensor heater duration.
+        :param value: Heating duration in milliseconds between 1 ms and 4032 (typical 20~30 ms)
+        """
+        temp = self._calc_heater_duration(value)
+        self._write(GAS_WAIT0_ADDR + nb_profile, temp)
 
-    @property
-    def humidity(self):
-        """The relative humidity in RH %"""
-        self._perform_reading()
-        temp_scaled = ((self._t_fine * 5) + 128) / 256
-        var1 = (self._adc_hum - (self._humidity_calibration[0] * 16)) - (
-            (temp_scaled * self._humidity_calibration[2]) / 200)
-        var2 = (self._humidity_calibration[1]
-                * (((temp_scaled * self._humidity_calibration[3]) / 100)
-                + (((temp_scaled * ((temp_scaled * self._humidity_calibration[4]) / 100)) / 64) / 100) + 16384)) / 1024
-        var3 = var1 * var2
-        var4 = self._humidity_calibration[5] * 128
-        var4 = (var4 + ((temp_scaled * self._humidity_calibration[6]) / 100)) / 16
-        var5 = ((var3 / 16384) * (var3 / 16384)) / 1024
-        var6 = (var4 * var5) / 2
-        calc_hum = (((var3 + var6) / 1024) * 1000) / 4096
-        calc_hum /= 1000  # get back to RH
-
-        calc_hum = min(calc_hum, 100)
-        calc_hum = max(calc_hum, 0)
-        return calc_hum
-
-    @property
-    def resistance(self):
-        """The gas resistance in ohms"""
-        self._perform_reading()
-        var1 = ((1340 + (5 * self._sw_err)) * (_LOOKUP_TABLE_1[self._gas_range])) / 65536
-        var2 = ((self._adc_gas * 32768) - 16777216) + var1
-        var3 = (_LOOKUP_TABLE_2[self._gas_range] * var1) / 512
-        calc_gas_res = (var3 + (var2 / 2)) / var2
-        return int(calc_gas_res)
-
-    @property
-    def gas(self):
-        #(self, temp, hum_rel, tVOC, hum_abs_base, counter, baseline, polls)
-        #"""The TVOC in ppb based on 
-        #https://github.com/juergs/ESPEasy_BME680_TVOC/blob/master/lib/js_bme680.cpp"""
-        #hum_abs = self.absolute_humidity(temp, hum_rel)
-        #res = sum([self.resistance for _ in range(polls)])/polls    # get average resistance from multiple readings
-        #if hum_abs_base == 0 or hum_abs < hum_abs_base:
-        #    hum_abs_base = hum_abs
-        #else:
-        #    hum_abs_base += 0.2 * (hum_abs - hum_abs_base)
-        #counter, baseline = self.auto_baseline_correction(res, hum_abs, counter, baseline)
-        #ratio = baseline / (res * hum_abs_base * 7)
-        #tVOC_new = 1250 * math.log(ratio) + 125
-        #tVOC = tVOC + 0.3*(tVOC_new - tVOC)
-        #print(tVOC, tVOC_new, temp, hum_rel, res, hum_abs, baseline, counter, hum_abs_base, ratio)
-        #return int(tVOC), hum_abs_base, counter, baseline
-        return self.resistance
-
-    def absolute_humidity(self, temp, hum_rel):
-        """The absolute humidity in weird but correct format"""
-        sdd = 6.1078 * pow(10, (7.5*temp) / (237.3 + temp))
-        dd = hum_rel / 100 * sdd
-        return 216.687*dd / (273.15 + temp)
-
-    def auto_baseline_correction(self, res, hum_abs, counter, baseline):
-        """Helper function for TVOC calculation"""
-        base_new = res * hum_abs * 7
-
-        if counter > 5:
-            baseline = base_new
-            counter = 0
-        elif base_new > baseline:
-            counter += 1
-        else:
-            counter = 0
-        return counter, baseline
-
-    def _perform_reading(self):
-        """Perform a single-shot reading from the sensor and fill internal data structure for
-        calculations"""
-        if time.ticks_ms() / 1000 - self._last_reading < self._min_refresh_time:
-            return
-
-        # set filter
-        self._write(_BME680_REG_CONFIG, [self._filter << 2])
-        # turn on temp oversample & pressure oversample
-        self._write(
-            _BME680_REG_CTRL_MEAS,
-            [(self._temp_oversample << 5) | (self._pressure_oversample << 2)],
-        )
-        # turn on humidity oversample
-        self._write(_BME680_REG_CTRL_HUM, [self._humidity_oversample])
-        # gas measurements enabled
-        self._write(_BME680_REG_CTRL_GAS, [_BME680_RUNGAS])
-
-        ctrl = self._read_byte(_BME680_REG_CTRL_MEAS)
-        ctrl = (ctrl & 0xFC) | 0x01  # enable single shot!
-        self._write(_BME680_REG_CTRL_MEAS, [ctrl])
-        new_data = False
-        while not new_data:
-            data = self._read(_BME680_REG_MEAS_STATUS, 15)
-            new_data = data[0] & 0x80 != 0
-            time.sleep(0.05)
-        self._last_reading = time.ticks_ms() / 1000
-
-        self._adc_pres = _read24(data[2:5]) / 16
-        self._adc_temp = _read24(data[5:8]) / 16
-        self._adc_hum = struct.unpack(">H", bytes(data[8:10]))[0]
-        self._adc_gas = int(struct.unpack(">H", bytes(data[13:15]))[0] / 64)
-        self._gas_range = data[14] & 0x0F
-
-        var1 = (self._adc_temp / 8) - (self._temp_calibration[0] * 2)
-        var2 = (var1 * self._temp_calibration[1]) / 2048
-        var3 = ((var1 / 2) * (var1 / 2)) / 4096
-        var3 = (var3 * self._temp_calibration[2] * 16) / 16384
-        self._t_fine = int(var2 + var3)
-
-    def _read_calibration(self):
-        """Read & save the calibration coefficients"""
-        coeff = self._read(_BME680_BME680_COEFF_ADDR1, 25)
-        coeff += self._read(_BME680_BME680_COEFF_ADDR2, 16)
-
-        coeff = list(struct.unpack("<hbBHhbBhhbbHhhBBBHbbbBbHhbb", bytes(coeff[1:39])))
-        coeff = [float(i) for i in coeff]
-        self._temp_calibration = [coeff[x] for x in [23, 0, 1]]
-        self._pressure_calibration = [
-            coeff[x] for x in [3, 4, 5, 7, 8, 10, 9, 12, 13, 14]
-        ]
-        self._humidity_calibration = [coeff[x] for x in [17, 16, 18, 19, 20, 21, 22]]
-        self._gas_calibration = [coeff[x] for x in [25, 24, 26]]
-
-        # flip around H1 & H2
-        self._humidity_calibration[1] *= 16
-        self._humidity_calibration[1] += self._humidity_calibration[0] % 16
-        self._humidity_calibration[0] /= 16
-
-        self._heat_range = (self._read_byte(0x02) & 0x30) / 16
-        self._heat_val = self._read_byte(0x00)
-        self._sw_err = (self._read_byte(0x04) & 0xF0) / 16
-
-    def _read_byte(self, register):
-        return self._read(register, 1)[0]
-
-    # these functions are ported from Pimoroni but don't seem to add anything
     def set_power_mode(self, value, blocking=True):
         """Set power mode."""
-        if value not in (0, 1):
+        if value not in (SLEEP_MODE, FORCED_MODE):
             raise ValueError('Power mode should be one of SLEEP_MODE or FORCED_MODE')
 
         self.power_mode = value
@@ -393,29 +253,164 @@ class Adafruit_BME680:
         self.power_mode = self._read(CONF_T_P_MODE_ADDR, 1)
         return self.power_mode
 
+    def get_sensor_data(self):
+        """Get sensor data"""
+        self.set_power_mode(FORCED_MODE)
+
+        for _ in range(10):
+            status = self._read(FIELD0_ADDR, 1)
+
+            if (status & NEW_DATA_MSK) == 0:
+                time.sleep(POLL_PERIOD_MS / 1000.0)
+                continue
+
+            regs = self._read(FIELD0_ADDR, 17)
+
+            self.status = regs[0] & NEW_DATA_MSK
+            # Contains the nb_profile used to obtain the current measurement
+            self.gas_index = regs[0] & GAS_INDEX_MSK
+            self.meas_index = regs[1]
+
+            self.adc_pres = (regs[2] << 12) | (regs[3] << 4) | (regs[4] >> 4)
+            self.adc_temp = (regs[5] << 12) | (regs[6] << 4) | (regs[7] >> 4)
+            self.adc_hum = (regs[8] << 8) | regs[9]
+            self.adc_gas_res_low = (regs[13] << 2) | (regs[14] >> 6)
+            self.gas_range_l = regs[14] & GAS_RANGE_MSK
+
+            self.status |= regs[14] & GASM_VALID_MSK
+            self.status |= regs[14] & HEAT_STAB_MSK
+
+            self.heat_stable = (self.status & HEAT_STAB_MSK) > 0
+
+            self.ambient_temperature = self.temperature
+
+            return True
+
+        return False
+
     def _set_bits(self, register, mask, position, value):
         """Mask out and set one or more bits in a register."""
-        temp = self._read(register, 1)[0]
+        temp = self._read(register, 1)
         temp &= ~mask
         temp |= value << position
-        self._write(register, [temp])
+        self._write(register, temp)
 
-class BME680(Adafruit_BME680):
-    def __init__(self, i2c, address=0x77, *, refresh_rate=10):
-        self._i2c = I2CDevice(i2c, address)
-        super().__init__(refresh_rate=refresh_rate)
+    def _write(self, register, value):
+        buffer = bytearray(2)
+        buffer[0] = register
+        buffer[1] = value
+        self.i2c.writeto(self.address, buffer)
 
     def _read(self, register, length):
-        with self._i2c as i2c:
-            i2c.write(bytes([register & 0xFF]))
-            result = bytearray(length)
-            i2c.readinto(result)
-            return result
+        self.i2c.writeto(self.address, bytes([register & 0xFF]))
+        result = self.i2c.readfrom(self.address, length)
+        if length <= 2:
+            return int.from_bytes(result, 'little')
+        return result
 
-    def _write(self, register, values):
-        with self._i2c as i2c:
-            buffer = bytearray(2 * len(values))
-            for i, value in enumerate(values):
-                buffer[2 * i] = register + i
-                buffer[2 * i + 1] = value
-            i2c.write(buffer)
+    @property
+    def temperature(self):
+        """Convert the raw temperature to degrees C using calibration_data."""
+        var1 = (self.adc_temp >> 3) - (self.calibration.par_t1 << 1)
+        var2 = (var1 * self.calibration.par_t2) >> 11
+        var3 = ((var1 >> 1) * (var1 >> 1)) >> 12
+        var3 = ((var3) * (self.calibration.par_t3 << 4)) >> 14
+
+        # Save teperature data for pressure calculations
+        self.calibration.t_fine = (var2 + var3) + self.offset_temp_in_t_fine
+        calc_temp = (((self.calibration.t_fine * 5) + 128) >> 8)
+
+        return calc_temp / 100
+
+    @property
+    def pressure(self):
+        """Convert the raw pressure using calibration data."""
+        var1 = ((self.calibration.t_fine) >> 1) - 64000
+        var2 = ((((var1 >> 2) * (var1 >> 2)) >> 11) * self.calibration.par_p6) >> 2
+        var2 = var2 + ((var1 * self.calibration.par_p5) << 1)
+        var2 = (var2 >> 2) + (self.calibration.par_p4 << 16)
+        var1 = (((((var1 >> 2) * (var1 >> 2)) >> 13) *
+                ((self.calibration.par_p3 << 5)) >> 3) +
+                ((self.calibration.par_p2 * var1) >> 1))
+        var1 = var1 >> 18
+
+        var1 = ((32768 + var1) * self.calibration.par_p1) >> 15
+        calc_pressure = 1048576 - self.adc_pres
+        calc_pressure = ((calc_pressure - (var2 >> 12)) * (3125))
+
+        if calc_pressure >= (1 << 31):
+            calc_pressure = ((calc_pressure // var1) << 1)
+        else:
+            calc_pressure = ((calc_pressure << 1) // var1)
+
+        var1 = (self.calibration.par_p9 * (((calc_pressure >> 3) *
+                (calc_pressure >> 3)) >> 13)) >> 12
+        var2 = ((calc_pressure >> 2) *
+                self.calibration.par_p8) >> 13
+        var3 = ((calc_pressure >> 8) * (calc_pressure >> 8) *
+                (calc_pressure >> 8) *
+                self.calibration.par_p10) >> 17
+
+        calc_pressure = (calc_pressure) + ((var1 + var2 + var3 +
+                                           (self.calibration.par_p7 << 7)) >> 4)
+
+        return calc_pressure / 100
+
+    @property
+    def humidity(self):
+        """Convert the raw humidity using calibration data."""
+        temp_scaled = ((self.calibration.t_fine * 5) + 128) >> 8
+        var1 = (self.adc_hum - ((self.calibration.par_h1 * 16))) -\
+               (((temp_scaled * self.calibration.par_h3) // (100)) >> 1)
+        var2 = (self.calibration.par_h2 *
+                (((temp_scaled * self.calibration.par_h4) // (100)) +
+                 (((temp_scaled * ((temp_scaled * self.calibration.par_h5) // (100))) >> 6) //
+                 (100)) + (1 * 16384))) >> 10
+        var3 = var1 * var2
+        var4 = self.calibration.par_h6 << 7
+        var4 = ((var4) + ((temp_scaled * self.calibration.par_h7) // (100))) >> 4
+        var5 = ((var3 >> 14) * (var3 >> 14)) >> 10
+        var6 = (var4 * var5) >> 1
+        calc_hum = (((var3 + var6) >> 10) * (1000)) >> 12
+
+        return min(max(calc_hum, 0), 100000) / 1000
+
+    @property
+    def gas(self):
+        """Convert the raw gas resistance using calibration data."""
+        var1 = ((1340 + (5 * self.calibration.range_sw_err)) * (lookupTable1[self.gas_range_l])) >> 16
+        var2 = (((self.adc_gas_res_low << 15) - (16777216)) + var1)
+        var3 = ((lookupTable2[self.gas_range_l] * var1) >> 9)
+        calc_gas_res = ((var3 + (var2 >> 1)) / var2)
+
+        if calc_gas_res < 0:
+            calc_gas_res = (1 << 32) + calc_gas_res
+
+        return calc_gas_res
+
+    def _calc_heater_resistance(self, temperature):
+        """Convert raw heater resistance using calibration data."""
+        temperature = min(max(temperature, 200), 400)
+
+        var1 = ((self.ambient_temperature * self.calibration.par_gh3) / 1000) * 256
+        var2 = (self.calibration.par_gh1 + 784) * (((((self.calibration.par_gh2 + 154009) * temperature * 5) / 100) + 3276800) / 10)
+        var3 = var1 + (var2 / 2)
+        var4 = (var3 / (self.calibration.res_heat_range + 4))
+        var5 = (131 * self.calibration.res_heat_val) + 65536
+        heatr_res_x100 = (((var4 / var5) - 250) * 34)
+        heatr_res = ((heatr_res_x100 + 50) / 100)
+
+        return heatr_res
+
+    def _calc_heater_duration(self, duration):
+        """Calculate correct value for heater duration setting from milliseconds."""
+        if duration < 0xfc0:
+            factor = 0
+
+            while duration > 0x3f:
+                duration /= 4
+                factor += 1
+
+            return int(duration + (factor * 64))
+
+        return 0xff
