@@ -2,6 +2,9 @@
 In deze repository is de meest recente software te vinden die op de meetkastjes gebruikt wordt.  
 Het prototype hiervan is ontworpen door Klaas van Laveren in samenwerking met ICR3ATE en vervolgens volledig doorontwikkeld door Steven Boonstoppel.  
 
+## Hoe te gebruiken
+Download de officiële release en flash deze op de LoPy4 door middel van de Pycom Firmware Updater (flash from local file, use LittleFS). Vervolgens hoeft alleen `settings.py` geüpload te worden naar de LoPy4.
+
 ## Algemene opzet
 De focus van de kastjes ligt uiteraard op uithoudingsvermogen. Praktisch betekent dat dat elke sensor zo kort mogelijk actief is en de stroomsterkte geminimaliseerd is.  
 Met dat doel voor ogen is de volgende constructie opgezet:  
