@@ -25,13 +25,14 @@ def run_collection(i2c_bus, all_sensors, t_wake = 30):
 
     veml6070 = VEML6070(i2c = i2c_bus, address = 56)                # UV sensor (0.4 / 0.0 mA) (0x38)
     veml6070.wake()
-    time.sleep(0.2)                                                 # sensor stabilization time (required!!)
     values['uv'] = veml6070.uv_raw
+    time.sleep(0.2)                                                 # sensor stabilization time (required!!)
     values['uv'] = veml6070.uv_raw                                  # first poll may fail so do it twice
     veml6070.sleep()
 
     tsl2591 =  TSL2591(i2c = i2c_bus, address = 41)                 # lux sensor (0.4 / 0.0 mA) (0x29)
     tsl2591.wake()
+    values['lx'] = tsl2591.lux
     time.sleep(0.2)                                                 # sensor stabilization time (required!!)
     values['lx'] = tsl2591.lux
     tsl2591.sleep()

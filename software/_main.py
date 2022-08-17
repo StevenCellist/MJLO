@@ -1,14 +1,22 @@
-import machine
-import settings
-import time
-from lib.SSD1306 import SSD1306
+#_main.py -- frozen into the firmware along all other modules except settings.py
+import pycom
 
-wake_reason = machine.wake_reason()[0]                  # tuple of (wake_reason, GPIO_list)
+pycom.heartbeat(False)
+pycom.heartbeat_on_boot(False)
+pycom.wifi_on_boot(False)
+
+import time
 wake_time = time.ticks_ms()
+
+import machine
+wake_reason = machine.wake_reason()[0]                  # tuple of (wake_reason, GPIO_list)
+
+import settings
+from lib.SSD1306 import SSD1306
 
 i2c_bus = machine.I2C(0)                                # create I2C object
 display = SSD1306(128, 64, i2c_bus)                     # initialize display (4.4 / 0.0 mA)
-display.text("MJLO-" + str(settings.NODE), 1, 1)
+display.text("MJLO-" + settings.NODE, 1, 1)
 display.text("Hello world!", 1, 11)
 display.show()
 
@@ -89,11 +97,11 @@ if LORA_CNT == 0:
     import secret
 
     if settings.LORA_MODE == 'OTAA':
-        lora.join(activation = network.LoRa.OTAA, auth = secret.auth(settings.LORA_MODE, settings.NODE), dr = LORA_DR)
+        mode = network.LoRa.OTAA
+    else: #settings.LORA_MODE == 'ABP'
+        mode = network.LoRa.ABP
 
-    if settings.LORA_MODE == 'ABP':
-        lora.join(activation = network.LoRa.ABP, auth = secret.auth(settings.LORA_MODE, settings.NODE), dr = LORA_DR)
-    
+    lora.join(activation = mode, auth = secret.auth(settings.LORA_MODE, settings.NODE), dr = LORA_DR)
     # don't need to wait for has_joined(): when joining the network, GPS is enabled next which takes much longer
 
 # create Cayenne-formatted LoRa message (payload either 41 or 42 bytes so stick to 42 either way)
