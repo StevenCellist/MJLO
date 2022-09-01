@@ -11,10 +11,9 @@ Reading format. See http://cl.ly/ekot
 7 DATA6    ID byte 2
 8 Checksum Low byte of sum of DATA bytes
 9 Tail     '\xab'
-
 """
 
-import ustruct as struct
+import struct
 
 _SDS011_CMDS = {'SET': b'\x01',
         'GET': b'\x00',
@@ -51,7 +50,7 @@ class SDS011:
 
     def get_response(self, command_ID):
         # try for 120 bytes (0.2) second to get a response from sensor (typical response time 12~33 bytes)
-        for _ in range(240):
+        for _ in range(120):
             try:
                 header = self._uart.read(1)
                 if header == b'\xaa':
@@ -63,9 +62,9 @@ class SDS011:
                                 self.process_measurement(packet)
                             return True
                     else:
-                        print("Response did not match command ID", command_ID)
+                        pass
             except Exception as e:
-                print('Problem attempting to read:', e)
+                pass
         return False
 
     def wake(self):
@@ -94,13 +93,11 @@ class SDS011:
 
     def process_measurement(self, packet):
         try:
-            *data, checksum, tail = struct.unpack('<HHBBBs', packet)
+            *data, _, _ = struct.unpack('<HHBBBs', packet)
             self._pm25 = data[0]/10.0
             self._pm10 = data[1]/10.0
-            checksum_OK = (checksum == (sum(data) % 256))
-            tail_OK = tail == b'\xab'
         except Exception as e:
-            print('Problem decoding packet:', e)
+            pass
 
     def read(self):
         self.query()                        # query measurement

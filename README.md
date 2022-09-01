@@ -50,4 +50,4 @@ De vermoedde accuduur is drie weken, waarbij het zonnepaneel buiten beschouwing 
 
 ## Schema
 Zie de figuur voor de opbouw van het circuit in de sensorkastjes.
-![Schematic v2.5 15-08-2022](Schematic_Meet_je_leefomgeving_2022-08-15.svg)
+![Schematic v2.5 15-08-2022](Schematic_Meet_je_leefomgeving_2022-09-01.svg)
