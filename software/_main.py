@@ -1,6 +1,6 @@
 #_main.py -- frozen into the firmware along all other modules except settings.py
 import time
-start_time = time.ticks_ms()                    # save current boot time
+start_time = time.ticks_ms() + 2000             # save current boot time (+2s compensation offset)
 
 import pycom
 import machine
@@ -129,7 +129,7 @@ if use_gps == True:
     loc = run_gps()
 
     # add gps values (frame is now 1 + 14 + 9 = 24 bytes)
-    frame += pack(loc['lat'] + 180, 0.0000001, size = 4) + pack(loc['long'] + 90, 0.0000001, size = 4) \
+    frame += pack(loc['lat'] + 90, 0.0000001, size = 4) + pack(loc['long'] + 180, 0.0000001, size = 4) \
             + pack(loc['alt'], 0.1, size = 1)
 
 # send LoRa message and store LoRa context + frame count in non-volatile RAM (should be using wear leveling)
