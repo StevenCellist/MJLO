@@ -135,7 +135,7 @@ if use_gps == True:
 # send LoRa message and store LoRa context + frame count in non-volatile RAM (should be using wear leveling)
 s.send(frame)
 lora.nvram_save()
-pycom.nvs_set('fcnt', LORA_FCNT)
+pycom.nvs_set('fcnt', LORA_FCNT + 1)
 
 # write all values to display in two series
 display.fill(0)
