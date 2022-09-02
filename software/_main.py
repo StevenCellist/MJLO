@@ -27,7 +27,7 @@ if wake_reason == machine.PIN_WAKE:
 
 display.fill(0)
 display.text("MJLO-" + settings.NODE, 1, 1)
-display.text("FW: v2.6", 1, 11)
+display.text("FW: v2.6.1", 1, 11)
 display.show()
 
 """ This part is only executed if DEBUG == True """
