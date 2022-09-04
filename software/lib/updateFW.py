@@ -1,7 +1,6 @@
 import machine
 import pycom
 import os
-import time
 import secret
 
 BLOCKSIZE = const(4096)
@@ -20,8 +19,6 @@ def check_update(display):
 
 	try:
 		os.mount(sd, '/sd')                     # mount SD card
-		display.text("Mounted SD card", 1, 11)
-		display.show()
 	except:
 		display.text("Could not mount", 1, 11)
 		display.show()
@@ -29,9 +26,9 @@ def check_update(display):
 
 	try:
 		with open(APPIMG, "rb") as f:           # open new firmware file
-			display.text("New firmware!", 1, 21)
+			display.text("New firmware!", 1, 11)
 			filesize = int(os.stat(APPIMG)[6] / 1000)   # calculate filesize in kB
-			display.text("Size: " + str(filesize) + " kB", 1, 31)
+			display.text("Size: " + str(filesize) + " kB", 1, 21)
 			display.show()
 			buffer = bytearray(BLOCKSIZE)
 			mv = memoryview(buffer)
@@ -45,20 +42,30 @@ def check_update(display):
 					size += chunk
 					prog = int(size / filesize / 10)    # calculate progress (in %)
 					if prog != last_prog:               # if % has changed, update display
-						display.text("Progress: {:>3}%".format(last_prog), 1, 41, col = 0)
-						display.text("Progress: {:>3}%".format(prog), 1, 41)
+						display.text("Progress: {:>3}%".format(last_prog), 1, 31, col = 0)
+						display.text("Progress: {:>3}%".format(prog), 1, 31)
 						display.show()
 						last_prog = prog                # update old value
 				else:
 					break
-			display.text("Rebooting...", 1, 51)
-			display.show()
+			
 			pycom.ota_finish()                  # finish Over The Air update
-		os.umount('/sd')
-		sd.deinit()
-		return True
+		
 	except:
-		display.text("Update failed", 1, 41)
+		display.text("Update failed", 1, 31)
 		display.show()
     
-	return False
+	try:
+		os.stat('/sd/upgrade.py')
+		display.text("Applying upgrade", 1, 41)
+		__import__('/sd/upgrade')
+	except:
+		display.text("No upgrade found", 1, 41)
+	
+	os.umount('/sd')
+	sd.deinit()
+		
+	display.text("Rebooting...", 1, 51)
+	display.show()
+
+	return True

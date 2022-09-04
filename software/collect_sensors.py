@@ -7,11 +7,11 @@ from lib.BME680 import BME680
 from lib.MAX4466 import MAX4466
 from lib.KP26650 import KP26650
 
-def run_collection(i2c_bus, all_sensors, t_wake = 30):
+def run_collection(i2c, all_sensors, t_wake = 30):
 
     values = {}                                                     # collection of all values, to be returned
 
-    bme680 = BME680(i2c = i2c_bus, address = 0x77)
+    bme680 = BME680(i2c = i2c, address = 0x77)
     bme680.set_gas_heater_temperature(400, nb_profile = 1)          # set VOC plate heating temperature
     bme680.set_gas_heater_duration(50, nb_profile = 1)              # set VOC plate heating duration
     bme680.select_gas_heater_profile(1)                             # select those settings
@@ -23,14 +23,14 @@ def run_collection(i2c_bus, all_sensors, t_wake = 30):
     values['voc'] = bme680.gas
     bme680.set_power_mode(0)
 
-    veml6070 = VEML6070(i2c = i2c_bus, address = 56)                # UV sensor (0.4 / 0.0 mA) (0x38)
+    veml6070 = VEML6070(i2c = i2c, address = 56)                    # UV sensor (0.4 / 0.0 mA) (0x38)
     veml6070.wake()
     values['uv'] = veml6070.uv_raw
     time.sleep(0.2)                                                 # sensor stabilization time (required!!)
     values['uv'] = veml6070.uv_raw                                  # first poll may fail so do it twice
     veml6070.sleep()
 
-    tsl2591 =  TSL2591(i2c = i2c_bus, address = 41)                 # lux sensor (0.4 / 0.0 mA) (0x29)
+    tsl2591 =  TSL2591(i2c = i2c, address = 41)                     # lux sensor (0.4 / 0.0 mA) (0x29)
     tsl2591.wake()
     values['lx'] = tsl2591.lux
     time.sleep(0.2)                                                 # sensor stabilization time (required!!)
