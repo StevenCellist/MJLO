@@ -18,7 +18,7 @@ if wake_reason == machine.PWRON_WAKE:
 
     from lib.updateFW import check_update
     update = check_update(display)
-    machine.sleep(2000)				            # show update result for 1s on display
+    machine.sleep(1000)				            # show update result for 1s on display
     if update:
         machine.reset()                         # in case of an update, reboot the device
 
