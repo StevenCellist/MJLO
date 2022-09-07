@@ -34,7 +34,8 @@ def check_update(display):
 		display.text("Applying upgrade", 1, 11)
 		__import__(file_UG[:-3])
 	except:
-		display.text("No upgrade found", 1, 11)
+		display.text("Not upgraded", 1, 11)
+	display.show()
 
 	# update firmware if a firmware file is present on the SD card
 	try:
@@ -58,7 +59,7 @@ def check_update(display):
 					if chunk > 0:
 						pycom.ota_write(mv[:chunk])
 						size += chunk
-						prog = int(size / filesize / 10)    # calculate progress (in %)
+						prog = int(size / filesize * 100)    # calculate progress (in %)
 						if prog != last_prog:               # if % has changed, update display
 							display.text("Progress: {:>3}%".format(last_prog), 1, 41, col = 0)	# de-fill previous progress
 							display.text("Progress: {:>3}%".format(prog), 1, 41)				# write current progress
