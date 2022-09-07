@@ -1,4 +1,4 @@
-#_main.py -- frozen into the firmware along all other modules except settings.py
+#_main.py -- frozen into the firmware along all other modules
 import time
 start_time = time.ticks_ms()                    # save current boot time
 
