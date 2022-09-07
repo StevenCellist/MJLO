@@ -21,7 +21,7 @@ except:
 
 addresses = i2c.scan()
 
-sensors = { "41" : "TSL2591", "56" : "VEML6070", "119" : "BME680" }
+sensors = { 41 : "TSL2591", 56 : "VEML6070", 119 : "BME680" }
 
 i = 11
 for key in sensors:
@@ -33,6 +33,6 @@ for key in sensors:
 if i == 11:
     display.text("I2C ok", 1, 11)
     display.show()
-    blink(0, 255, 0)
+    blink(255, 0, 0)
 else:
     blink(180, 180, 0)

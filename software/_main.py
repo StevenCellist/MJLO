@@ -16,15 +16,14 @@ if wake_reason == machine.PWRON_WAKE:
     pycom.heartbeat_on_boot(False)
     pycom.wifi_on_boot(False)
 
-    from lib.updateFW import check_update
-    update = check_update(display)
-    machine.sleep(1000)				            # show update result for 1s on display
-    if update:
+    from lib.updateFW import check_SD
+    reboot = check_SD(display)
+    if reboot:
         machine.reset()                         # in case of an update, reboot the device
 
 display.fill(0)
-display.text("MJLO-" + pycom.nvs_get('node'), 1, 1)
-display.text("FW: v2.6.2", 1, 11)
+display.text("MJLO-{:>02}".format(pycom.nvs_get('node')), 1, 1)
+display.text("FW: v2.6.3", 1, 11)
 display.show()
 
 """ This part is only executed if DEBUG == True """
@@ -73,8 +72,8 @@ if LORA_FCNT % pycom.nvs_get('adr') == 0 or wake_reason == machine.PIN_WAKE:
     frame = bytes([1])                                  # LoRa packet decoding type 1 (all sensors)
 
 use_gps = False
-# once a day, enable GPS (but not if the button was pressed)
-if LORA_FCNT % int(86400 / pycom.nvs_get('t_int')) == 0 and wake_reason != machine.PIN_WAKE:
+# once a day, enable GPS (but not if the button was pressed) (every second message of the day)
+if LORA_FCNT % int(86400 / pycom.nvs_get('t_int')) == 1 and wake_reason != machine.PIN_WAKE:
     use_gps = True
     all_sensors = False
     frame = bytes([2])                                  # LoRa packet decoding type 2 (use GPS)
@@ -109,16 +108,16 @@ values = run_collection(i2c = i2c, all_sensors = all_sensors, t_wake = pycom.nvs
 
 def pack(value, precision, size = 2):
     value = int(value / precision)                      # round to precision
-    value = max(0, min(value, 2**(8*size)))             # stay in range 0 .. int.max_size
+    value = max(0, min(value, 2**(8*size) - 1))         # stay in range 0 .. int.max_size - 1
     return value.to_bytes(size, 'big')                  # pack to bytes
 
-# add the sensor values that are always measured (frame is now 1 + 14 = 15 bytes)
+# add the sensor values that are always measured (frame is now 1 + 15 = 16 bytes)
 frame += pack(values['volt'], 0.001) + pack(values['temp'] + 25, 0.01) + pack(values['pres'], 0.1) \
         + pack(values['humi'], 0.5, size = 1) + pack(values['volu'], 0.5, size = 1) \
-        + pack(values['lx'], 1) + pack(values['uv'], 1) + pack(values['voc'], 1)
+        + pack(values['lx'], 1) + pack(values['uv'], 1) + pack(values['voc'], 1, size = 3)
 
 if all_sensors == True:
-    # add extra sensor values (frame is now 1 + 14 + 6 = 21 bytes)
+    # add extra sensor values (frame is now 1 + 15 + 6 = 22 bytes)
     frame += pack(values['co2'], 1) + pack(values['pm25'], 0.1) + pack(values['pm10'], 0.1)
 
 if use_gps == True:
@@ -126,11 +125,11 @@ if use_gps == True:
     from collect_gps import run_gps
     loc = run_gps()
 
-    # add gps values (frame is now 1 + 14 + 9 = 24 bytes)
+    # add gps values (frame is now 1 + 15 + 9 = 25 bytes)
     frame += pack(loc['lat'] + 90, 0.0000001, size = 4) + pack(loc['long'] + 180, 0.0000001, size = 4) \
             + pack(loc['alt'], 0.1, size = 1)
 
-# send LoRa message and store LoRa context + frame count in non-volatile RAM (should be using wear leveling)
+# send LoRa message and store LoRa context + frame count in NVRAM (should be using wear leveling)
 s.send(frame)
 lora.nvram_save()
 pycom.nvs_set('fcnt', LORA_FCNT + 1)
@@ -158,7 +157,7 @@ machine.sleep(pycom.nvs_get('t_disp') * 1000)
 display.poweroff()
 
 # set up for deepsleep
-awake_time = time.ticks_diff(time.ticks_ms(), start_time) - 2000    # time in milliseconds the program has been running
+awake_time = time.ticks_diff(time.ticks_ms(), start_time) - 3000    # time in milliseconds the program has been running
 push_button = machine.Pin('P2', mode = machine.Pin.IN, pull = machine.Pin.PULL_DOWN)   # initialize wake-up pin
 machine.pin_sleep_wakeup(['P2'], mode = machine.WAKEUP_ANY_HIGH, enable_pull = True)   # set wake-up pin as trigger
 machine.deepsleep(pycom.nvs_get('t_int') * 1000 - awake_time)       # deepsleep for remainder of the interval time
