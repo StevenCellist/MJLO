@@ -98,3 +98,10 @@ De volgende regels zijn (elke keer) nodig om de firmware te compilen:
 * `make release`
 
 Het resulterende `.tar.gz` bestand staat in de subfolder `/build`. Dit bestand kan gebruikt worden om de LoPy4 te flashen via de Pycom Firmware Updater. Om het `.bin` bestand te verkrijgen dat nodig is voor de OTA updates, moet de `.tar.gz` uitgepakt worden via bijvoorbeeld `tar -xzf filename`: het resulterende `lopy4.bin` is het gezochte bestand.
+
+[Installing pycom-esp-idf](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/linux-macos-setup.html)
+[Installing pycom-micropython-sigfox](https://github.com/pycom/pycom-micropython-sigfox)
+[Frozen modules documentation](https://docs.pycom.io/advance/frozen/)
+[Modyfing startup sequence](https://forum.pycom.io/topic/2038/flashing-with-frozen-main-py-and-boot-py/6)
+[Relative frozen imports](https://forum.pycom.io/topic/7255/lib-folder-in-frozen-base)
+[Pycom Firmware Updater](https://docs.pycom.io/updatefirmware/device/)
