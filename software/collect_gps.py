@@ -1,9 +1,8 @@
 import machine
 import time
+from lib.micropyGPS import MicropyGPS
 
-def run_gps(timeout = 120):
-    from lib.micropyGPS import MicropyGPS
-    
+def run_gps(timeout = 120):    
     values = {}
 
     gps_en = machine.Pin('P22', mode = machine.Pin.OUT)         # 2N2907 (PNP) gate pin

@@ -11,7 +11,7 @@ def run_collection(i2c, all_sensors, t_wake = 30):
 
     values = {}                                                     # collection of all values, to be returned
 
-    bme680 = BME680(i2c = i2c, address = 0x77)
+    bme680 = BME680(i2c = i2c, address = 119)
     bme680.set_gas_heater_temperature(400, nb_profile = 1)          # set VOC plate heating temperature
     bme680.set_gas_heater_duration(50, nb_profile = 1)              # set VOC plate heating duration
     bme680.select_gas_heater_profile(1)                             # select those settings
@@ -57,7 +57,7 @@ def run_collection(i2c, all_sensors, t_wake = 30):
 
         mq135 = MQ135('P17', duration = 50)                         # CO2 sensor (200 / 0.0 mA)
 
-        machine.sleep(t_wake * 1000)                                # wait for ~30 seconds
+        machine.sleep(t_wake * 1000)                                # wait for ~25 seconds
 
         values['co2'] = mq135.get_corrected_ppm(values['temp'], values['humi'])
 
