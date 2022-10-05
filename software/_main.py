@@ -1,56 +1,63 @@
 #_main.py -- frozen into the firmware along all other modules
 import time
-start_time = time.ticks_ms()                    # save current boot time
+start_time = time.ticks_ms()                            # save current boot time
 
 import pycom
 import machine
+import pins
 from lib.SSD1306 import SSD1306
 
-wake_reason = machine.wake_reason()[0]          # tuple of (wake_reason, GPIO_list)
+wake_reason = machine.wake_reason()[0]                  # tuple of (wake_reason, GPIO_list)
 
-i2c = machine.I2C(0)                            # create I2C object
-display = SSD1306(128, 64, i2c)                 # initialize display (4.4 / 0.0 mA)
+i2c = machine.I2C(0, pins = (pins.SDA, pins.SCL))       # create I2C object
+display = SSD1306(128, 64, i2c)                         # initialize display (4.4 / 0.0 mA)
 
-# on first boot, disable integrated LED and WiFi and check for SD card updates
+# on first boot, disable integrated LED and WiFi, set firmware version and check for SD card updates
 if wake_reason == machine.PWRON_WAKE:
     pycom.heartbeat_on_boot(False)
     pycom.wifi_on_boot(False)
+    pycom.nvs_set("fwversion", 264)
 
     from lib.updateFW import check_SD
     reboot = check_SD(display)
     if reboot:
-        machine.reset()                         # in case of an update, reboot the device
+        machine.reset()                                 # in case of an update, reboot the device
+
+# if woken up from deepsleep, there was no error on the previous boot, so make sure to set register to 0
+else:
+    if pycom.nvs_get("error") == 1:
+        pycom.nvs_set("error", 0)
 
 display.fill(0)
 display.text("MJLO-{:>02}".format(pycom.nvs_get('node')), 1, 1)
-display.text("FW: v2.6.3", 1, 11)
+display.text("FW: v2.6.4", 1, 11)
 display.show()
 
 """ This part is only executed if DEBUG == True """
 if pycom.nvs_get('debug') == 1:
     
-    if wake_reason == machine.PIN_WAKE:         # if button is pressed in DEBUG mode, enable GPS
+    if wake_reason == machine.PIN_WAKE:                 # if button is pressed in DEBUG mode, enable GPS
         from collect_gps import run_gps
-        loc = run_gps(timeout = 120)
+        loc = run_gps(timeout = 120)                    # try to find a GPS fix within 120 seconds
         print("NB", loc['lat'], "OL", loc['long'], "H", loc['alt'])
 
     from collect_sensors import run_collection
     values = run_collection(i2c = i2c, all_sensors = True, t_wake = pycom.nvs_get('t_wake'))
 
-    print("Temp: " + str(values['temp']) + " C")
-    print("Druk: " + str(values['pres']) + " hPa")
-    print("Vocht: " + str(values['humi']) + " %")
-    print("Licht: " + str(values['lx']) + " lx")
-    print("UV: " + str(values['uv']))
-    print("Accu: " + str(values['perc']) + " %")
+    print("Temp: "   + str(values['temp']) + " C")
+    print("Druk: "   + str(values['pres']) + " hPa")
+    print("Vocht: "  + str(values['humi']) + " %")
+    print("Licht: "  + str(values[  'lx']) + " lx")
+    print("UV: "     + str(values[  'uv']))
+    print("Accu: "   + str(values['perc']) + " %")
     print("Volume: " + str(values['volu']) + " dB")
-    print("VOC: " + str(values['voc']) + " Ohm")
-    print("CO2: " + str(values['co2']) + " ppm")
-    print("PM2.5: " + str(values['pm25']) + " ppm")
-    print("PM10: " + str(values['pm10']) + " ppm")
+    print("VOC: "    + str(values[ 'voc']) + " Ohm")
+    print("CO2: "    + str(values[ 'co2']) + " ppm")
+    print("PM2.5: "  + str(values['pm25']) + " ppm")
+    print("PM10: "   + str(values['pm10']) + " ppm")
 
-    push_button = machine.Pin('P2', mode = machine.Pin.IN, pull = machine.Pin.PULL_DOWN)   # initialize wake-up pin
-    machine.pin_sleep_wakeup(['P2'], mode = machine.WAKEUP_ANY_HIGH, enable_pull = True)   # set wake-up pin as trigger
+    push_button = machine.Pin(pins.Wake, mode = machine.Pin.IN, pull = machine.Pin.PULL_DOWN)   # initialize wake-up pin
+    machine.pin_sleep_wakeup([pins.Wake], mode = machine.WAKEUP_ANY_HIGH, enable_pull = True)   # set wake-up pin as trigger
     machine.deepsleep((pycom.nvs_get('t_debug') - 30) * 1000)   # deepsleep for remainder of the interval time
 
 """ This part is only executed if DEBUG == False """
@@ -100,7 +107,7 @@ if LORA_FCNT == 0:
         mode = network.LoRa.ABP
 
     lora.join(activation = mode, auth = secret.auth(), dr = LORA_DR)
-    # don't need to wait for has_joined(): GPS takes much longer to start
+    # don't wait for has_joined() here: sensors will take ~25 seconds first anyway
 
 # run sensor routine
 from collect_sensors import run_collection
@@ -123,41 +130,46 @@ if all_sensors == True:
 if use_gps == True:
     # run gps routine
     from collect_gps import run_gps
-    loc = run_gps()
+    loc = run_gps(timeout = 120)                        # try to find a GPS fix within 120 seconds
 
-    # add gps values (frame is now 1 + 15 + 9 = 25 bytes)
+    # add gps values and current firmware version (frame is now 1 + 15 + 9 + 1 = 26 bytes)
     frame += pack(loc['lat'] + 90, 0.0000001, size = 4) + pack(loc['long'] + 180, 0.0000001, size = 4) \
-            + pack(loc['alt'], 0.1, size = 1)
+            + pack(loc['alt'], 0.1, size = 1) + pack(pycom.nvs_get("fwversion"), 1, size = 1)
 
-# send LoRa message and store LoRa context + frame count in NVRAM (should be using wear leveling)
-s.send(frame)
-lora.nvram_save()
-pycom.nvs_set('fcnt', LORA_FCNT + 1)
+if lora.has_joined():
+    # send LoRa message and store LoRa context + frame count in NVRAM
+    s.send(frame)
+    lora.nvram_save()
+    pycom.nvs_set('fcnt', LORA_FCNT + 1)
 
-# write all values to display in two series
-display.fill(0)
-display.text("Temp: " + str(round(values['temp'], 1)) + " C",   1,  1),
-display.text("Druk: " + str(round(values['pres'], 1)) + " hPa", 1, 11),
-display.text("Vocht: " + str(round(values['humi'], 1)) + " %",  1, 21),
-display.text("Licht: " + str(int(values['lx'])) + " lx",        1, 31),
-display.text("UV: " + str(int(values['uv'])),                   1, 41),
-display.text("Accu: " + str(int(values['perc'])) + " %",        1, 54),
-display.show()
-machine.sleep(pycom.nvs_get('t_disp') * 1000)
-display.fill(0)
-display.text("Volume: " + str(int(values['volu'])) + " dB",     1,  1),
-display.text("VOC: " + str(int(values['voc'])) + " Ohm",        1, 11),
-if all_sensors == True:
-    display.text("CO2: " + str(int(values['co2'])) + " ppm",    1, 21),
-    display.text("PM2.5: " + str(values['pm25']) + " ppm",      1, 31),
-    display.text("PM10: " + str(values['pm10']) + " ppm",       1, 41),
-display.text("Accu: " + str(int(values['perc'])) + " %",        1, 54),
-display.show()
-machine.sleep(pycom.nvs_get('t_disp') * 1000)
-display.poweroff()
+    # write all values to display in two series
+    display.fill(0)
+    display.text("Temp: "   + str(round(values['temp'], 1)) + " C",   1,  1),
+    display.text("Druk: "   + str(round(values['pres'], 1)) + " hPa", 1, 11),
+    display.text("Vocht: "  + str(round(values['humi'], 1)) + " %",   1, 21),
+    display.text("Licht: "  + str(round(values[  'lx']   )) + " lx",  1, 31),
+    display.text("UV: "     + str(round(values[  'uv']   )),          1, 41),
+    display.text("Accu: "   + str(round(values['perc']   )) + " %",   1, 54),
+    display.show()
+    machine.sleep(pycom.nvs_get('t_disp') * 1000)
+    display.fill(0)
+    display.text("Volume: " + str(round(values['volu']   )) + " dB",  1,  1),
+    display.text("VOC: "    + str(round(values[ 'voc']   )) + " Ohm", 1, 11),
+    if all_sensors == True:
+        display.text("CO2: "   + str(round(values[ 'co2'])) + " ppm", 1, 21),
+        display.text("PM2.5: " + str(round(values['pm25'])) + " ppm", 1, 31),
+        display.text("PM10: "  + str(round(values['pm10'])) + " ppm", 1, 41),
+    display.text("Accu: "      + str(round(values['perc'])) + " %",   1, 54),
+    display.show()
+    machine.sleep(pycom.nvs_get('t_disp') * 1000)
+    display.poweroff()
+else:
+    display.fill(0)
+    display.text("Geen verbinding", 1, 1)
+    display.show()
 
 # set up for deepsleep
-awake_time = time.ticks_diff(time.ticks_ms(), start_time) - 3000    # time in milliseconds the program has been running
-push_button = machine.Pin('P2', mode = machine.Pin.IN, pull = machine.Pin.PULL_DOWN)   # initialize wake-up pin
-machine.pin_sleep_wakeup(['P2'], mode = machine.WAKEUP_ANY_HIGH, enable_pull = True)   # set wake-up pin as trigger
+awake_time = time.ticks_diff(time.ticks_ms(), start_time) - 2800    # time in milliseconds the program has been running
+push_button = machine.Pin(pins.Wake, mode = machine.Pin.IN, pull = machine.Pin.PULL_DOWN)   # initialize wake-up pin
+machine.pin_sleep_wakeup([pins.Wake], mode = machine.WAKEUP_ANY_HIGH, enable_pull = True)   # set wake-up pin as trigger
 machine.deepsleep(pycom.nvs_get('t_int') * 1000 - awake_time)       # deepsleep for remainder of the interval time

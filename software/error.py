@@ -2,8 +2,22 @@ import machine
 import pycom
 from lib.SSD1306 import SSD1306
 
-def blink(R, G, B):
+def reboot_or_blink(R, G, B):
     color = (R << 16) + (G << 8) + B
+
+    # if we land here from a working state, reboot to try and solve error
+    if not pycom.nvs_get("error"):
+        pycom.nvs_set("error", 1)   # set in NVRAM that we encountered an error
+        pycom.rgbled(color)
+        machine.sleep(1000)
+        display.fill(0)
+        display.text("Rebooting...", 1, 1)
+        display.show()
+        machine.sleep(2000)
+        pycom.rgbled(0)
+        machine.reset()
+        
+    # if rebooting did not solve the error, just loop now
     while True:
         pycom.rgbled(color)
         machine.sleep(500)
@@ -17,10 +31,9 @@ try:
     display.text("Error!", 1, 1)
     display.show()
 except:
-    blink(0, 0, 255)
+    reboot_or_blink(0, 0, 255)
 
 addresses = i2c.scan()
-
 sensors = { 41 : "TSL2591", 56 : "VEML6070", 119 : "BME680" }
 
 i = 11
@@ -33,6 +46,6 @@ for key in sensors:
 if i == 11:
     display.text("I2C ok", 1, 11)
     display.show()
-    blink(255, 0, 0)
+    reboot_or_blink(255, 0, 0)
 else:
-    blink(180, 180, 0)
+    reboot_or_blink(180, 180, 0)

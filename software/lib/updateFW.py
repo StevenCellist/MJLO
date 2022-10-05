@@ -74,15 +74,15 @@ def check_firmware():
 	return ("New firmware", filesize)
 
 def do_firmware(display, filesize):
-	last_prog = 0
-	string = "{:>4}/{} ({:>3}%)".format(size, filesize, last_prog)
+	size = 0										# number of copied bytes counter
+	last_prog = 0									# progression tracker
+	string = "{:>4}/{} ({:>3}%)".format(0, int(filesize / 1000), 0)
 	display.text(string, 1, 31)
 	display.show()
 	try:
-		with open(secret.file_firmware, "rb") as f:	# open new firmware file
+		with open(secret.file_firmware, "rb") as f:	# open new firmware file as binary file
 			buffer = bytearray(BLOCKSIZE)			# buffer of 4096 bytes
 			mv = memoryview(buffer)
-			size = 0								# copied bytes counter
 			pycom.ota_start()                   	# start Over The Air update
 			chunk = f.readinto(buffer)
 			while chunk > 0:
@@ -91,7 +91,7 @@ def do_firmware(display, filesize):
 				prog = int(size / filesize * 100) 	# calculate progress (in %)
 				if prog != last_prog:               # if % has changed, update display
 					display.text(string, 1, 31, col = 0)	# de-fill previous string
-					string = "{:>4}/{} ({:>3}%)".format(size, filesize, prog)
+					string = "{:>4}/{} ({:>3}%)".format(int(size / 1000), int(filesize / 1000), prog)
 					display.text(string, 1, 31)		# write current string
 					display.show()
 					last_prog = prog                # update old value

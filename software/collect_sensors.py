@@ -1,6 +1,7 @@
 import machine
 import time
 
+import pins
 from lib.VEML6070 import VEML6070
 from lib.TSL2591 import TSL2591
 from lib.BME680 import BME680
@@ -37,10 +38,10 @@ def run_collection(i2c, all_sensors, t_wake = 30):
     values['lx'] = tsl2591.lux
     tsl2591.sleep()
 
-    max4466 =  MAX4466('P15', duration = 200)                       # analog loudness sensor (200ms measurement)
+    max4466 =  MAX4466(pins.Vol, duration = 200)                    # analog loudness sensor (200ms measurement)
     values['volu'] = max4466.get_volume()                           # active: 0.3 mA, sleep: 0.3 mA (always on)
     
-    battery = KP26650('P16', duration = 50, ratio = 2)              # battery voltage (50ms measurement, 1:1 voltage divider)
+    battery = KP26650(pins.Batt, duration = 50, ratio = 2)          # battery voltage (50ms measurement, 1:1 voltage divider)
     values['volt'] = battery.get_voltage()
     values['perc'] = battery.get_percentage(values['volt'], lb = 2.9, ub = 4.1) # map voltage from 2.9..4.1 V to 0..100%
 
@@ -48,14 +49,14 @@ def run_collection(i2c, all_sensors, t_wake = 30):
         from lib.SDS011 import SDS011
         from lib.MQ135 import MQ135
 
-        regulator = machine.Pin('P21', mode = machine.Pin.OUT)      # voltage regulator SHDN pin
+        regulator = machine.Pin(pins.VR, mode = machine.Pin.OUT)    # voltage regulator SHDN pin
         regulator.hold(False)                                       # disable hold from deepsleep
         regulator.value(1)                                          # start SDS011 and MQ135
 
-        com = machine.UART(1, pins=('P20', 'P19'), baudrate = 9600) # UART communication to SDS011
+        com = machine.UART(1, pins=(pins.TX1, pins.RX1), baudrate = 9600) # UART communication to SDS011
         sds011 = SDS011(com)                                        # fine particle sensor (70 / 0.0 mA)
 
-        mq135 = MQ135('P17', duration = 50)                         # CO2 sensor (200 / 0.0 mA)
+        mq135 = MQ135(pins.CO2, duration = 50)                      # CO2 sensor (200 / 0.0 mA)
 
         machine.sleep(t_wake * 1000)                                # wait for ~25 seconds
 

@@ -82,7 +82,7 @@ De volgende twee regels moeten elke keer uitgevoerd worden bij het openen van ee
 
 (De volgende opmerkingen gaan er allemaal vanuit dat je je in de map `pycom-micropython-sigfox/esp32` bevindt.)
 
-Om bestanden in te vriezen, moeten ze in de subfolder `/frozen/Base` geplaatst worden. Standaard staan daar een `_boot.py` en `_main.py`: die kunnen overschreven worden met de desbetreffende bestanden uit deze repository zonder verlies van functionaliteit.  
+Om bestanden te bevriezen, moeten ze in de subfolder `/frozen/Base` geplaatst worden. Standaard staan daar een `_boot.py` en `_main.py`: die kunnen overschreven worden met de desbetreffende bestanden uit deze repository zonder verlies van functionaliteit.  
 Om relatieve imports te behouden (bijvoorbeeld `import lib.SSD1306`) kan de map `/lib` ook gewoon binnen de map `/frozen/Base` geplaatst worden.  
 Let op: het is niet mogelijk de bestanden `boot.py` en `main.py` zelf te bevriezen: die worden standaard geleegd bij het compilen.
 
@@ -99,9 +99,9 @@ De volgende regels zijn (elke keer) nodig om de firmware te compilen:
 
 Het resulterende `.tar.gz` bestand staat in de subfolder `/build`. Dit bestand kan gebruikt worden om de LoPy4 te flashen via de Pycom Firmware Updater. Om het `.bin` bestand te verkrijgen dat nodig is voor de OTA updates, moet de `.tar.gz` uitgepakt worden via bijvoorbeeld `tar -xzf filename`: het resulterende `lopy4.bin` is het gezochte bestand.
 
-[Installing pycom-esp-idf](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/linux-macos-setup.html)
-[Installing pycom-micropython-sigfox](https://github.com/pycom/pycom-micropython-sigfox)
-[Frozen modules documentation](https://docs.pycom.io/advance/frozen/)
-[Modyfing startup sequence](https://forum.pycom.io/topic/2038/flashing-with-frozen-main-py-and-boot-py/6)
-[Relative frozen imports](https://forum.pycom.io/topic/7255/lib-folder-in-frozen-base)
-[Pycom Firmware Updater](https://docs.pycom.io/updatefirmware/device/)
+[Installing pycom-esp-idf](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/linux-macos-setup.html)   
+[Installing pycom-micropython-sigfox](https://github.com/pycom/pycom-micropython-sigfox)  
+[Frozen modules documentation](https://docs.pycom.io/advance/frozen/)  
+[Modyfing startup sequence](https://forum.pycom.io/topic/2038/flashing-with-frozen-main-py-and-boot-py/6)  
+[Relative frozen imports](https://forum.pycom.io/topic/7255/lib-folder-in-frozen-base)  
+[Pycom Firmware Updater](https://docs.pycom.io/updatefirmware/device/)  
