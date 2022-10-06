@@ -72,23 +72,18 @@ if wake_reason != machine.PWRON_WAKE:                   # if woken up from deeps
     lora.nvram_restore()                                # ..restore LoRa information from nvRAM
     LORA_FCNT = pycom.nvs_get('fcnt')                   # ..restore LoRa frame count from nvRAM
 
-frame = bytes([0])                                      # LoRa packet decoding type 0 (minimal)
+LORA_FPORT = 1                                          # default LoRa packet decoding type
 
-all_sensors = False
-# every ADR'th message or if the button was pushed, use all sensors (but not if GPS is used)
+# every ADR'th message or if the button was pushed, use all sensors (overrules FPORT = 1)
 if LORA_FCNT % pycom.nvs_get('adr') == 0 or wake_reason == machine.PIN_WAKE:
-    all_sensors = True
-    frame = bytes([1])                                  # LoRa packet decoding type 1 (all sensors)
+    LORA_FPORT = 2                                      # LoRa packet decoding type 2 (use all sensors)
 
-use_gps = False
-# once a day, enable GPS (but not if the button was pressed) (every second message of the day)
+# every second message of the day, enable GPS (but not if the button was pressed) (overrules FPORT = 1 and 2)
 if LORA_FCNT % int(86400 / pycom.nvs_get('t_int')) == 1 and wake_reason != machine.PIN_WAKE:
-    use_gps = True
-    all_sensors = False
-    frame = bytes([2])                                  # LoRa packet decoding type 2 (use GPS)
+    LORA_FPORT = 3                                      # LoRa packet decoding type 3 (use GPS)
 
 # if GPS or all sensors are used, send on high SF (don't let precious power go to waste)
-if use_gps == True or all_sensors == True:
+if LORA_FPORT > 1:
     LORA_SF = pycom.nvs_get('sf_h')
 else:
     LORA_SF = pycom.nvs_get('sf_l')
@@ -98,6 +93,7 @@ LORA_DR = 12 - LORA_SF                                  # calculate DR for this 
 
 s = socket.socket(socket.AF_LORA, socket.SOCK_RAW)      # create a LoRa socket (blocking)
 s.setsockopt(socket.SOL_LORA, socket.SO_DR, LORA_DR)    # set the LoRaWAN data rate
+s.bind(LORA_FPORT)                                      # set the type of message used for decoding the packet
 
 # join the network upon first-time wake
 if LORA_FCNT == 0:
@@ -113,28 +109,28 @@ if LORA_FCNT == 0:
 
 # run sensor routine
 from collect_sensors import run_collection
-values = run_collection(i2c = i2c, all_sensors = all_sensors, t_wake = pycom.nvs_get('t_wake'))
+values = run_collection(i2c = i2c, all_sensors = (LORA_FPORT == 2), t_wake = pycom.nvs_get('t_wake'))
 
 def pack(value, precision, size = 2):
     value = int(value / precision)                      # round to precision
     value = max(0, min(value, 2**(8*size) - 1))         # stay in range 0 .. int.max_size - 1
     return value.to_bytes(size, 'big')                  # pack to bytes
 
-# add the sensor values that are always measured (frame is now 1 + 15 = 16 bytes)
-frame += pack(values['volt'], 0.001) + pack(values['temp'] + 25, 0.01) + pack(values['pres'], 0.1) \
+# create a dataframe with sensor values that are always measured (15 bytes)
+frame = pack(values['volt'], 0.001) + pack(values['temp'] + 25, 0.01) + pack(values['pres'], 0.1) \
         + pack(values['humi'], 0.5, size = 1) + pack(values['volu'], 0.5, size = 1) \
         + pack(values['lx'], 1) + pack(values['uv'], 1) + pack(values['voc'], 1, size = 3)
 
-if all_sensors == True:
-    # add extra sensor values (frame is now 1 + 15 + 6 = 22 bytes)
+if LORA_FPORT == 2:
+    # add extra sensor values (frame is now 15 + 6 = 21 bytes)
     frame += pack(values['co2'], 1) + pack(values['pm25'], 0.1) + pack(values['pm10'], 0.1)
 
-if use_gps == True:
+if LORA_FPORT == 3:
     # run gps routine
     from collect_gps import run_gps
     loc = run_gps(timeout = 120)                        # try to find a GPS fix within 120 seconds
 
-    # add gps values and current firmware version (frame is now 1 + 15 + 9 + 1 = 26 bytes)
+    # add gps values and current firmware version (frame is now 15 + 9 + 1 = 25 bytes)
     frame += pack(loc['lat'] + 90, 0.0000001, size = 4) + pack(loc['long'] + 180, 0.0000001, size = 4) \
             + pack(loc['alt'], 0.1, size = 1) + pack(pycom.nvs_get("fwversion"), 1, size = 1)
 
@@ -157,7 +153,7 @@ if lora.has_joined():
     display.fill(0)
     display.text("Volume: " + str(round(values['volu']   )) + " dB",  1,  1),
     display.text("VOC: "    + str(round(values[ 'voc']   )) + " Ohm", 1, 11),
-    if all_sensors == True:
+    if LORA_FPORT == 2:
         display.text("CO2: "   + str(round(values[ 'co2'])) + " ppm", 1, 21),
         display.text("PM2.5: " + str(round(values['pm25'])) + " ppm", 1, 31),
         display.text("PM10: "  + str(round(values['pm10'])) + " ppm", 1, 41),
