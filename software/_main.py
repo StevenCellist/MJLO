@@ -1,14 +1,16 @@
 #_main.py -- frozen into the firmware along all other modules
-import time
-start_time = time.ticks_ms()                            # save current boot time
+version_str = "v2.6.4"
+version_int = int(version_str.replace('v', '').replace('.', ''))
 
+import time
 import pycom
 import machine
 import pins
-from lib.SSD1306 import SSD1306
 
+start_time = time.ticks_ms()                            # save current boot time
 wake_reason = machine.wake_reason()[0]                  # tuple of (wake_reason, GPIO_list)
 
+from lib.SSD1306 import SSD1306
 i2c = machine.I2C(0, pins = (pins.SDA, pins.SCL))       # create I2C object
 display = SSD1306(128, 64, i2c)                         # initialize display (4.4 / 0.0 mA)
 
@@ -16,7 +18,7 @@ display = SSD1306(128, 64, i2c)                         # initialize display (4.
 if wake_reason == machine.PWRON_WAKE:
     pycom.heartbeat_on_boot(False)
     pycom.wifi_on_boot(False)
-    pycom.nvs_set("fwversion", 264)
+    pycom.nvs_set("fwversion", version_int)
 
     from lib.updateFW import check_SD
     reboot = check_SD(display)
@@ -30,10 +32,10 @@ else:
 
 display.fill(0)
 display.text("MJLO-{:>02}".format(pycom.nvs_get('node')), 1, 1)
-display.text("FW: v2.6.4", 1, 11)
+display.text("FW {}".format(version_str), 1, 11)
 display.show()
 
-""" This part is only executed if DEBUG == True """
+""" This part is only executed if debug is set to 1 """
 if pycom.nvs_get('debug') == 1:
     
     if wake_reason == machine.PIN_WAKE:                 # if button is pressed in DEBUG mode, enable GPS
@@ -60,7 +62,7 @@ if pycom.nvs_get('debug') == 1:
     machine.pin_sleep_wakeup([pins.Wake], mode = machine.WAKEUP_ANY_HIGH, enable_pull = True)   # set wake-up pin as trigger
     machine.deepsleep((pycom.nvs_get('t_debug') - 30) * 1000)   # deepsleep for remainder of the interval time
 
-""" This part is only executed if DEBUG == False """
+""" This part is only executed if debug is set to 0 """
 import network
 import socket
 
