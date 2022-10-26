@@ -88,9 +88,15 @@ Let op: het is niet mogelijk de bestanden `boot.py` en `main.py` zelf te bevriez
 
 Om de versienaam aan te passen:
 * `nano pycom_version.h` -> regel 13: aanpassen
+[bron](https://forum.pycom.io/topic/3902/frozen-modules-for-my-sipy-solved/3)
 
 Om aan te passen welk bestand er uitgevoerd wordt na `_boot.py` en `_main.py` (in dit geval `"error.py"` in `/frozen/Base`):
 * `nano mptask.c` -> regel 339: vervang `pyexec_file(main.py)` door `pyexec_frozen_module("error.py")`
+[bron](https://forum.pycom.io/topic/2038/flashing-with-frozen-main-py-and-boot-py/4)
+
+Om een `OrderedDict` toe te voegen:
+* `nano mpconfigport.h` -> regel 79 nieuwe regel: `#define MICROPY_PY_COLLECTIONS_ORDEREDDICT (1)`
+[bron](https://forum.pycom.io/topic/972/enable-ordereddict-support-by-default/5)
 
 De volgende regels zijn (elke keer) nodig om de firmware te compilen:
 * `make clean`

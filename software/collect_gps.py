@@ -23,7 +23,4 @@ def run_gps(timeout = 120):
     gps_en.value(1)
     gps_en.hold(True)
 
-    values["lat"]  = gps.latitude
-    values["long"] = gps.longitude
-    values["alt"]  = gps.alt
-    return values
+    return [gps.latitude, gps.longitude, gps.alt]

@@ -44,14 +44,14 @@ if pycom.nvs_get('debug') == 1:
         print("NB", loc['lat'], "OL", loc['long'], "H", loc['alt'])
 
     from collect_sensors import run_collection
-    values = run_collection(i2c = i2c, all_sensors = True, t_wake = pycom.nvs_get('t_wake'))
+    values, perc = run_collection(i2c = i2c, all_sensors = True, t_wake = pycom.nvs_get('t_wake'))
 
     print("Temp: "   + str(values['temp']) + " C")
     print("Druk: "   + str(values['pres']) + " hPa")
     print("Vocht: "  + str(values['humi']) + " %")
     print("Licht: "  + str(values[  'lx']) + " lx")
     print("UV: "     + str(values[  'uv']))
-    print("Accu: "   + str(values['perc']) + " %")
+    print("Accu: "   + str(        perc  ) + " %")
     print("Volume: " + str(values['volu']) + " dB")
     print("VOC: "    + str(values[ 'voc']) + " Ohm")
     print("CO2: "    + str(values[ 'co2']) + " ppm")
@@ -93,50 +93,33 @@ LORA_DR = 12 - LORA_SF                                  # calculate DR for this 
 
 s = socket.socket(socket.AF_LORA, socket.SOCK_RAW)      # create a LoRa socket (blocking)
 s.setsockopt(socket.SOL_LORA, socket.SO_DR, LORA_DR)    # set the LoRaWAN data rate
-s.bind(LORA_FPORT)                                      # set the type of message used for decoding the packet
+s.bind(LORA_FPORT + int(1 / LORA_FPORT))                # set the type of message used for decoding the packet
 
 # join the network upon first-time wake
 if LORA_FCNT == 0:
     import secret
 
-    if pycom.nvs_get('lora') == 0:  # OTAA
-        mode = network.LoRa.OTAA
-    else:                           # ABP
-        mode = network.LoRa.ABP
-
+    mode = network.LoRa.OTAA if pycom.nvs_get('lora') == 0 else network.LoRa.ABP
     lora.join(activation = mode, auth = secret.auth(), dr = LORA_DR)
     # don't wait for has_joined() here: sensors will take ~25 seconds first anyway
 
 # run sensor routine
 from collect_sensors import run_collection
-values = run_collection(i2c = i2c, all_sensors = (LORA_FPORT == 2), t_wake = pycom.nvs_get('t_wake'))
-
-def pack(value, precision, size = 2):
-    value = int(value / precision)                      # round to precision
-    value = max(0, min(value, 2**(8*size) - 1))         # stay in range 0 .. int.max_size - 1
-    return value.to_bytes(size, 'big')                  # pack to bytes
-
-# create a dataframe with sensor values that are always measured (15 bytes)
-frame = pack(values['volt'], 0.001) + pack(values['temp'] + 25, 0.01) + pack(values['pres'], 0.1) \
-        + pack(values['humi'], 0.5, size = 1) + pack(values['volu'], 0.5, size = 1) \
-        + pack(values['lx'], 1) + pack(values['uv'], 1) + pack(values['voc'], 1, size = 3)
-
-if LORA_FPORT == 2:
-    # add extra sensor values (frame is now 15 + 6 = 21 bytes)
-    frame += pack(values['co2'], 1) + pack(values['pm25'], 0.1) + pack(values['pm10'], 0.1)
+from CayenneLPP import make_frame
+values, perc = run_collection(i2c = i2c, all_sensors = (LORA_FPORT == 2), t_wake = pycom.nvs_get('t_wake'))
 
 if LORA_FPORT == 3:
     # run gps routine
     from collect_gps import run_gps
-    loc = run_gps(timeout = 120)                        # try to find a GPS fix within 120 seconds
+    values['gps'] = run_gps(timeout = 120)      # try to find a GPS fix within 120 seconds
+    values['fw'] = pycom.nvs_get('fwversion')
 
-    # add gps values and current firmware version (frame is now 15 + 9 + 1 = 25 bytes)
-    frame += pack(loc['lat'] + 90, 0.0000001, size = 4) + pack(loc['long'] + 180, 0.0000001, size = 4) \
-            + pack(loc['alt'], 0.1, size = 1) + pack(pycom.nvs_get("fwversion"), 1, size = 1)
+frame = make_frame(values)
 
 if lora.has_joined():
     # send LoRa message and store LoRa context + frame count in NVRAM
     s.send(frame)
+    s.close()
     lora.nvram_save()
     pycom.nvs_set('fcnt', LORA_FCNT + 1)
 
@@ -147,7 +130,7 @@ if lora.has_joined():
     display.text("Vocht: "  + str(round(values['humi'], 1)) + " %",   1, 21),
     display.text("Licht: "  + str(round(values[  'lx']   )) + " lx",  1, 31),
     display.text("UV: "     + str(round(values[  'uv']   )),          1, 41),
-    display.text("Accu: "   + str(round(values['perc']   )) + " %",   1, 54),
+    display.text("Accu: "   + str(round(        perc     )) + " %",   1, 54),
     display.show()
     machine.sleep(pycom.nvs_get('t_disp') * 1000)
     display.fill(0)
@@ -157,7 +140,7 @@ if lora.has_joined():
         display.text("CO2: "   + str(round(values[ 'co2'])) + " ppm", 1, 21),
         display.text("PM2.5: " + str(round(values['pm25'])) + " ppm", 1, 31),
         display.text("PM10: "  + str(round(values['pm10'])) + " ppm", 1, 41),
-    display.text("Accu: "      + str(round(values['perc'])) + " %",   1, 54),
+    display.text("Accu: "      + str(round(        perc  )) + " %",   1, 54),
     display.show()
     machine.sleep(pycom.nvs_get('t_disp') * 1000)
     display.poweroff()

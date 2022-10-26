@@ -1,4 +1,3 @@
-
 configs = {   # ID   bytes             precision
     'd_in'  : [  0,        1 ,                  1     ],
     'd_out' : [  1,        1 ,                  1     ],
@@ -20,21 +19,29 @@ tags = {
     'humi' : 'humi',
     'voc'  : 'baro',
     'uv'   : 'lumi',
-    'lx'   : 'lumi', 
+    'lx'   : 'lumi',
     'volu' : 'humi',
     'batt' : 'a_in',
     'co2'  : 'baro',
     'pm25' : 'baro',
     'pm10' : 'baro',
+    'gps'  : 'gps',
+    'fw'   : 'd_out',
 }
 
-def pack(name, values):
+def pack(name, values, lead, idx):
     tag = tags[name]
     cfg = configs[tag]
     id        = cfg[0]
     numbytes  = cfg[1]
     precision = cfg[2]
-    out = bytes([id])
+
+    out = bytes([])
+    if lead > 0:
+        if lead == 2:
+            out += bytes([idx])
+        out += bytes([id])
+
     if isinstance(values, int) or isinstance(values, float):    # pack single value
         value = int(values / precision)                         # round to precision
         value = max(0, min(value, 2**(8*numbytes) - 1))         # stay in range 0 .. int.max_size - 1
@@ -46,8 +53,8 @@ def pack(name, values):
             out += value.to_bytes(numbytes[i], 'big')           # pack to bytes
     return out
 
-def make_frame(data_dict):
+def make_frame(data_dict, lead = 0):
     frame = bytes([])
-    for key, values in data_dict.items():
-        frame += pack(key, values)
+    for idx, key, values in enumerate(data_dict.items()):
+        frame += pack(key, values, lead, idx)
     return frame
