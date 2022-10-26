@@ -44,7 +44,7 @@ def run_collection(i2c, all_sensors, t_wake = 30):
     
     battery = KP26650(pins.Batt, duration = 50, ratio = 2)          # battery voltage (50ms measurement, 1:1 voltage divider)
     values['volt'] = battery.get_voltage()
-    perc = battery.get_percentage(values['volt'], lb = 3.3, ub = 4.2) # map voltage from 2.9..4.1 V to 0..100%
+    perc = battery.get_percentage(values['volt'], lb = 3.3, ub = 4.2) # map voltage from 3.3..4.2 V to 0..100%
 
     if all_sensors == True:
         from lib.SDS011 import SDS011

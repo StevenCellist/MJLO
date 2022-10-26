@@ -93,7 +93,7 @@ LORA_DR = 12 - LORA_SF                                  # calculate DR for this 
 
 s = socket.socket(socket.AF_LORA, socket.SOCK_RAW)      # create a LoRa socket (blocking)
 s.setsockopt(socket.SOL_LORA, socket.SO_DR, LORA_DR)    # set the LoRaWAN data rate
-s.bind(LORA_FPORT + int(1 / LORA_FPORT))                # set the type of message used for decoding the packet
+s.bind(LORA_FPORT)                                      # set the type of message used for decoding the packet
 
 # join the network upon first-time wake
 if LORA_FCNT == 0:
@@ -105,16 +105,17 @@ if LORA_FCNT == 0:
 
 # run sensor routine
 from collect_sensors import run_collection
-from CayenneLPP import make_frame
+from LoRa_frame import make_frame
 values, perc = run_collection(i2c = i2c, all_sensors = (LORA_FPORT == 2), t_wake = pycom.nvs_get('t_wake'))
 
 if LORA_FPORT == 3:
     # run gps routine
     from collect_gps import run_gps
-    values['gps'] = run_gps(timeout = 120)      # try to find a GPS fix within 120 seconds
-    values['fw'] = pycom.nvs_get('fwversion')
+    gps = run_gps(timeout = 120)                        # try to find a GPS fix within 120 seconds
+    values['lat'], values['long'], values['alt'] = gps  # save values in dict
+    values['fw'] = pycom.nvs_get('fwversion')           # add current firmware version to values
 
-frame = make_frame(values)
+frame = make_frame(values)                              # pack OrderedDict to LoRa frame
 
 if lora.has_joined():
     # send LoRa message and store LoRa context + frame count in NVRAM
@@ -145,6 +146,8 @@ if lora.has_joined():
     machine.sleep(pycom.nvs_get('t_disp') * 1000)
     display.poweroff()
 else:
+    # if LoRa failed to join, don't save LoRa context + frame count to NVRAM
+    # this way, it will retry to join on the next wakeup
     display.fill(0)
     display.text("Geen verbinding", 1, 1)
     display.show()
