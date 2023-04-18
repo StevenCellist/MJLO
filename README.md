@@ -45,14 +45,14 @@ Let op: versie 3.1 van dit breakout board verschilt op meer vlakken van v3.0 dan
 [Voltage divider: mess](https://community.hiveeyes.org/t/batterieuberwachung-voltage-divider-und-attenuation-fur-micropython-firmware/2128/46?page=2)  
 
 ## Stroomgebruik en spanning
-***Verouderd: v2.0 i.t.t. huidige v2.5***  
+***Verouderd: v2.0 i.t.t. huidige v2.7***  
 Zie de figuur hieronder voor het stroomgebruik van de vorige versie software. De gemiddelde stroomsterkte tijdens activiteit is 105 mA; in deepsleep 3.4 mA.  
 De vermoedde accuduur is drie weken, waarbij het zonnepaneel buiten beschouwing wordt gelaten.  
 ![Stroomgebruik MJLO-12 op v19.01.22](Stroomgebruik_v19_01_22.png)
 
 ## Schema
 Zie de figuur voor de opbouw van het circuit in de sensorkastjes.
-![Schematic v2.5 15-08-2022](Schematic_Meet_je_leefomgeving_2022-09-01.svg)
+![Schematic v2.7 15-04-2023](Schematic_Meet_je_leefomgeving_2023-04-15.svg)
 
 ## Custom firmware
 De eenvoudige variant voor het ontwikkelen van software is het uploaden van alle losse bestanden naar `/flash`. Bij het wijzigen van een bestand kan dat losse bestand snel gewijzigd en opnieuw geupload worden. Er zijn echter meerdere nadelen aan verbonden:

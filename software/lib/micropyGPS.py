@@ -37,12 +37,12 @@ class MicropyGPS(object):
         self._longitude = [0, 0.0, 'W']
         self.speed = [0.0, 0.0, 0.0]
         self.course = 0.0
-        self.altitude = 0.0
+        self._altitude = 0.0
 
         # GPS Info
         self.satellites_in_use = 0
-        self.hdop = 0.0
-        self.valid = False
+        self._hdop = 0.0
+        self._valid = False
         self.fix_stat = 0
 
     # Coordinates Translation Functions
@@ -59,8 +59,20 @@ class MicropyGPS(object):
         return decimal_degrees
 
     @property
-    def alt(self):
-        return self.altitude
+    def altitude(self):
+        return self._altitude
+
+    @property
+    def hdop(self):
+        return self._hdop
+
+    @property
+    def satellites(self):
+        return self.satellites_in_use
+
+    @property
+    def valid(self):
+        return self._valid
 
     # Sentence Parsers
     def gprmc(self):
@@ -148,14 +160,14 @@ class MicropyGPS(object):
             # Include mph and hm/h
             self.speed = [spd_knt, spd_knt * 1.151, spd_knt * 1.852]
             self.course = course
-            self.valid = True
+            self._valid = True
 
         else:  # Clear Position Data if Sentence is 'Invalid'
             self._latitude = [0, 0.0, 'N']
             self._longitude = [0, 0.0, 'W']
             self.speed = [0.0, 0.0, 0.0]
             self.course = 0.0
-            self.valid = False
+            self._valid = False
 
         return True
 
@@ -206,12 +218,12 @@ class MicropyGPS(object):
             # Update Object Data
             self._latitude = [lat_degs, lat_mins, lat_hemi]
             self._longitude = [lon_degs, lon_mins, lon_hemi]
-            self.valid = True
+            self._valid = True
 
         else:  # Clear Position Data if Sentence is 'Invalid'
             self._latitude = [0, 0.0, 'N']
             self._longitude = [0, 0.0, 'W']
-            self.valid = False
+            self._valid = False
 
         return True
 
@@ -282,12 +294,12 @@ class MicropyGPS(object):
             # Update Object Data
             self._latitude = [lat_degs, lat_mins, lat_hemi]
             self._longitude = [lon_degs, lon_mins, lon_hemi]
-            self.altitude = altitude
+            self._altitude = altitude
 
         # Update Object Data
         self.timestamp = [hours, minutes, seconds]
         self.satellites_in_use = satellites_in_use
-        self.hdop = hdop
+        self._hdop = hdop
         self.fix_stat = fix_stat
 
         return True
