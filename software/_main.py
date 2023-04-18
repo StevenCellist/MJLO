@@ -61,9 +61,9 @@ if LORA_FCNT == 0:
 display.fill(0)
 display.text("MJLO-{:>02}" .format(pycom.nvs_get('node')), 1,  1)
 display.text("FW {}"       .format(version_str),           1, 11)
-display.text("SF    {:> 2}".format(LORA_SF),               1, 34)
-display.text("fport  {}"   .format(LORA_FPORT),            1, 44)
-display.text("fcnt {:> 4}" .format(LORA_FCNT),             1, 54)
+display.text("SF    {:> 4}".format(LORA_SF),               1, 34)
+display.text("fport {:> 4}".format(LORA_FPORT),            1, 44)
+display.text("fcnt {:> 5}" .format(LORA_FCNT),             1, 54)
 display.show()
 
 # run sensor routine
@@ -98,7 +98,7 @@ sckt.close()
 # write all values to display in two sets
 display.fill(0)
 display.text("Temp: {:> 6} C"   .format(round(values['temp'], 1)), 1,  1)
-display.text("Druk: {:> 6} hPa" .format(round(values['pres'], 1)), 1, 11)
+display.text("Druk:{:> 6} hPa"  .format(round(values['pres'], 1)), 1, 11)
 display.text("Vocht: {:> 5} %"  .format(round(values['humi'], 1)), 1, 21)
 display.text("Licht: {:> 5} lx" .format(round(values[  'lx']   )), 1, 31)
 display.text("UV: {:> 8}"       .format(round(values[  'uv']   )), 1, 41)

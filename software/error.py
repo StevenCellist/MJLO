@@ -23,7 +23,7 @@ s.bind(4)                                                                       
 mode = network.LoRa.OTAA if pycom.nvs_get('lora') == 0 else network.LoRa.ABP    # get LoRa mode (OTAA / ABP)
 lora = network.LoRa(mode = network.LoRa.LORAWAN, region = network.LoRa.EU868)   # create LoRa object
 lora.join(activation = mode, auth = secret.auth(), dr = LORA_DR)                # perform join
-frame = make_frame({'fw' : 999})                                                # make a frame with just 999 as fw version
+frame = make_frame({"fw" : 999})                                                # make a frame with just 999 as fw version
 while not lora.has_joined():
     machine.sleep(500)                                                          # wait for LoRa join
 s.send(frame)                                                                   # send frame

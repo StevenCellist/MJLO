@@ -44,7 +44,10 @@ class SCD41:
         self._relative_humidity = None
         self._co2 = None
 
-        self.stop_periodic_measurement()
+        try:
+            self.stop_periodic_measurement()
+        except:
+            pass
 
     @property
     def CO2(self) -> int:
