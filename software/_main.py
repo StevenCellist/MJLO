@@ -1,5 +1,5 @@
 #_main.py -- frozen into the firmware along all other modules
-version_str = "v2.7"
+version_str = "v2.7.0"
 version_int = int(version_str.replace('v', '').replace('.', ''))
 
 import time
@@ -72,11 +72,11 @@ from LoRa_frame import make_frame
 values, perc = run_collection(i2c = i2c, t_wake = pycom.nvs_get('t_wake'))
 
 if LORA_FPORT == 2:
-    values['fw'] = pycom.nvs_get('fwversion')           # add current firmware version to values
+    values['fw'] = pycom.nvs_get('fwversion') % 100     # add current firmware version to values (two trailing numbers)
 
     # run gps routine
     from collect_gps import run_gps
-    gps = run_gps(timeout = 120)                        # try to find a GPS fix within 120 seconds
+    gps = run_gps(timeout = 500)                        # try to find a GPS fix within 500 seconds
     if gps:
         values['lat'], values['long'], values['alt'], values['hdop'] = gps  # save values in dict
 

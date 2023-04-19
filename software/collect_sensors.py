@@ -56,7 +56,7 @@ def run_collection(i2c, t_wake = 30):
 
     machine.sleep(5000 - (time.ticks_ms() - t_start))               # sleep for the specified 5 seconds (remaining)
     while not scd41.data_ready:                                     # wait for flag
-        machine.sleep(10)
+        machine.sleep(200)
     values['co2'] = scd41.CO2
     scd41.sleep()
 
