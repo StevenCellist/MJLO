@@ -1,11 +1,5 @@
 import machine
 import pycom
-import pins
-import network
-import socket
-import secret
-from LoRa_frame import make_frame
-from lib.SSD1306 import SSD1306
 
 # if we land here from a working state, reboot to try and solve error
 if not pycom.nvs_get("error"):
@@ -13,19 +7,28 @@ if not pycom.nvs_get("error"):
     pycom.rgbled((255 << 16) + (255 << 8) + 255)    # bright white
     machine.sleep(2000)
     pycom.rgbled(0)                                 # off
-    machine.reset()                                 # reboot
+    machine.deepsleep(1)                            # reboot (software only!)
+
+import network
+import socket
+import secret
+from LoRa_frame import make_frame
 
 # if rebooting did not solve the error, send '999' as firmware version through LoRa to indicate error
 LORA_DR = 12 - pycom.nvs_get('sf_h')
 s = socket.socket(socket.AF_LORA, socket.SOCK_RAW)                              # create a LoRa socket (blocking)
 s.setsockopt(socket.SOL_LORA, socket.SO_DR, LORA_DR)                            # set the LoRaWAN data rate to high
 s.bind(4)                                                                       # set fport used for decoding the packet
-mode = network.LoRa.OTAA if pycom.nvs_get('lora') == 0 else network.LoRa.ABP    # get LoRa mode (OTAA / ABP)
+
 lora = network.LoRa(mode = network.LoRa.LORAWAN, region = network.LoRa.EU868)   # create LoRa object
-lora.join(activation = mode, auth = secret.auth(), dr = LORA_DR)                # perform join
+lora.nvmram_restore()
+if not lora.has_joined():
+    mode = network.LoRa.OTAA if pycom.nvs_get('lora') == 0 else network.LoRa.ABP# get LoRa mode (OTAA / ABP)
+    lora.join(activation = mode, auth = secret.auth(), dr = LORA_DR)            # perform join
+    while not lora.has_joined():
+        machine.sleep(500)                                                      # wait for LoRa join
+
 frame = make_frame({"fw" : 999})                                                # make a frame with just 999 as fw version
-while not lora.has_joined():
-    machine.sleep(500)                                                          # wait for LoRa join
 s.send(frame)                                                                   # send frame
 
 # function to loop indefinitely with a blinking onboard LED
@@ -36,9 +39,13 @@ def reboot_or_blink(R, G, B):
         pycom.rgbled(color)
         machine.sleep(500)
         pycom.rgbled(0)
-        machine.sleep(1500)
+        machine.sleep(4500)
 
 # run some simple diagnostics
+
+import pins
+from lib.SSD1306 import SSD1306
+
 i2c = machine.I2C(0, pins = (pins.SDA, pins.SCL))
 
 # try to initialize the display - if this throws an error, blink blue

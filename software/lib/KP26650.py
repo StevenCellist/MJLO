@@ -8,6 +8,7 @@ class KP26650:
         self.adc = adc.channel(pin = pin, attn = machine.ADC.ATTN_11DB) # 0 to 4095 accuracy
         self.duration = duration                                        # integration time in milliseconds
         self.ratio = ratio
+        self.avg_volt = 0
 
     def get_voltage(self):
         # take 'n' samples over 'duration' time to find average voltage across divider
@@ -18,11 +19,10 @@ class KP26650:
             val += self.adc.voltage()
             n += 1
         
-        avg_val = val / n                       # find average measured value
-        avg_volt = avg_val / 1000 * self.ratio  # convert mV -> V, multiply by certain ratio due to voltage divider
-        return avg_volt
+        avg_val = val / n                           # find average measured value
+        self.avg_volt = avg_val / 1000 * self.ratio # convert mV -> V, multiply by certain ratio due to voltage divider
+        return self.avg_volt
 
-    @staticmethod
-    def get_percentage( voltage, lb = 3.0, ub = 4.0):
+    def get_percentage(self, lb, ub):
         # return a value between 0..100% from lower bound to upper bound
-        return max(0, min(100, (voltage - lb) / (ub - lb) * 100))
+        return max(0, min(100, (self.avg_volt - lb) / (ub - lb) * 100))
