@@ -41,7 +41,7 @@ class MicropyGPS(object):
 
         # GPS Info
         self.satellites_in_use = 0
-        self._hdop = 0.0
+        self._hdop = 99.99
         self._valid = False
         self.fix_stat = 0
 

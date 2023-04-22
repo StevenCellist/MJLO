@@ -2,7 +2,7 @@ configs = { # bytes, offset, precision
         'temp' : (2, 100, 0.01  ),
         'pres' : (2,   0, 0.1   ),
         'humi' : (1,   0, 0.5   ),
-        'voc'  : (2,   0, 0.1   ),
+        'voc'  : (2,   0, 1     ),
         'uv'   : (2,   0, 1     ),
         'lx'   : (2,   0, 1     ),
         'volu' : (1,   0, 0.5   ),
@@ -13,7 +13,7 @@ configs = { # bytes, offset, precision
         'lat'  : (3,  90, 0.0001),
         'long' : (3, 180, 0.0001),
         'alt'  : (2, 100, 0.1   ),
-        'hdop' : {1,   0, 0.01  },
+        'hdop' : (1,   0, 0.1   ),
         'fw'   : (1,   0, 1     ),
 }
 

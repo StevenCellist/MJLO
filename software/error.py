@@ -11,24 +11,26 @@ if not pycom.nvs_get("error"):
 
 import network
 import socket
-import secret
-from LoRa_frame import make_frame
+
 
 # if rebooting did not solve the error, send '999' as firmware version through LoRa to indicate error
-LORA_DR = 12 - pycom.nvs_get('sf_h')
-s = socket.socket(socket.AF_LORA, socket.SOCK_RAW)                              # create a LoRa socket (blocking)
-s.setsockopt(socket.SOL_LORA, socket.SO_DR, LORA_DR)                            # set the LoRaWAN data rate to high
-s.bind(4)                                                                       # set fport used for decoding the packet
 
 lora = network.LoRa(mode = network.LoRa.LORAWAN, region = network.LoRa.EU868)   # create LoRa object
-lora.nvmram_restore()
+lora.nvram_restore()
+LORA_DR = 12 - pycom.nvs_get('sf_h')
 if not lora.has_joined():
+    import secret
     mode = network.LoRa.OTAA if pycom.nvs_get('lora') == 0 else network.LoRa.ABP# get LoRa mode (OTAA / ABP)
     lora.join(activation = mode, auth = secret.auth(), dr = LORA_DR)            # perform join
     while not lora.has_joined():
         machine.sleep(500)                                                      # wait for LoRa join
 
+from LoRa_frame import make_frame
 frame = make_frame({"fw" : 999})                                                # make a frame with just 999 as fw version
+
+s = socket.socket(socket.AF_LORA, socket.SOCK_RAW)                              # create a LoRa socket (blocking)
+s.setsockopt(socket.SOL_LORA, socket.SO_DR, LORA_DR)                            # set the LoRaWAN data rate to high
+s.bind(4)                                                                       # set fport used for decoding the packet
 s.send(frame)                                                                   # send frame
 
 # function to loop indefinitely with a blinking onboard LED

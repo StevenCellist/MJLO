@@ -5,13 +5,8 @@ version_int = int(version_str.replace('v', '').replace('.', ''))
 import time
 import pycom
 import machine
-
-start_time = time.ticks_ms()                            # save current boot time
-wake_reason = machine.wake_reason()[0]                  # tuple of (wake_reason, GPIO_list)
-
-pm_en = machine.Pin(pins.VR, mode = machine.Pin.OUT)    # voltage regulator SHDN pin
-pm_en.hold(False)                                       # disable hold from deepsleep
-pm_en.value(1)                                          # start SDS011
+import network
+import socket
 
 import pins
 from lib.SSD1306  import SSD1306
@@ -25,13 +20,14 @@ from lib.SDS011   import SDS011
 
 from ucollections import OrderedDict
 
+t_start = time.ticks_ms()                               # save current boot time
+wake_reason = machine.wake_reason()[0]                  # tuple of (wake_reason, GPIO_list)
+
 i2c = machine.I2C(0, pins = (pins.SDA, pins.SCL))       # create I2C object
 display = SSD1306(128, 64, i2c)                         # initialize display (4.4 / 0.0 mA)
 
 # on first boot, disable integrated LED and WiFi, set firmware version, check for SD card updates
 if wake_reason == machine.PWRON_WAKE:
-    pycom.heartbeat_on_boot(False)
-    pycom.wifi_on_boot(False)
     pycom.nvs_set('fwversion', version_int)
 
     from updateFW import check_SD
@@ -39,8 +35,16 @@ if wake_reason == machine.PWRON_WAKE:
     if reboot:
         machine.reset()                                 # in case of an update, reboot the device
 
+# enable power to the voltage regulator (and in turn SDS011) which requires most time
+vr_en = machine.Pin(pins.VR, mode = machine.Pin.OUT)    # voltage regulator SHDN pin
+vr_en.hold(False)                                       # disable hold from deepsleep
+vr_en.value(1)                                          # enable power
+
+uart1 = machine.UART(1, pins=(pins.TX1, pins.RX1), baudrate = 9600) # UART communication to SDS011
+sds011 = SDS011(uart1)                                  # fine particle sensor (110 / 0.0 mA)
+sds011.wake()
+
 # sort out all LoRa related settings (frame count, port, sf, join state)
-import network
 lora = network.LoRa(mode = network.LoRa.LORAWAN, region = network.LoRa.EU868)
 LORA_FCNT = 0                                           # default LoRa frame count
 if wake_reason != machine.PWRON_WAKE:                   # if woken up from deepsleep (timer or button)..
@@ -81,10 +85,10 @@ display.show()
 # run all sensors
 values = OrderedDict()                                  # collection of all values, to be returned
 
-scd41 = SCD41(i2c = i2c, address = 98)                  # CO2 sensor (50 / 0.2 mA) (0x62)
-scd41.wake()
-machine.sleep(200)
-scd41.measure_single_shot()
+# scd41 = SCD41(i2c = i2c, address = 98)                  # CO2 sensor (50 / 0.2 mA) (0x62)
+# scd41.wake()
+# machine.sleep(200)
+# scd41.measure_single_shot()
 t_start = time.ticks_ms()                               # keep track of wake time (5 seconds)
 
 bme680 = BME680(i2c = i2c, address = 119)
@@ -130,23 +134,24 @@ display.text("UV: {:> 8}"       .format(round(values[  'uv']   )), 1, 41)
 display.text("Accu: {:> 6} %"   .format(round(        perc     )), 1, 54)
 display.show()
 
-while not scd41.data_ready:                             # wait for flag
-    machine.sleep(200)
-values['co2'] = scd41.CO2
-scd41.sleep()
+# while not scd41.data_ready:                             # wait for flag
+#     machine.sleep(200)
+# values['co2'] = scd41.CO2
+# scd41.sleep()
+values['co2'] = 0
 
-uart1 = machine.UART(1, pins=(pins.TX1, pins.RX1), baudrate = 9600) # UART communication to SDS011
-sds011 = SDS011(uart1)                                  # fine particle sensor (110 / 0.0 mA)
+# sleep for the remainder of 25 seconds
+machine.sleep(25000 - time.ticks_diff(time.ticks_ms(), t_start)) 
 
-machine.sleep(25000 - start_time)                       # sleep for the remainder of 25 seconds
-
-while (not sds011.read() and time.ticks_ms() < 30000):  # try to get a response from SDS011 within 5 seconds
+# try to get a response from SDS011 within 5 seconds
+while (not sds011.read() and time.ticks_diff(time.ticks_ms(), t_start) < 30000):
     machine.sleep(200)
 
 values['pm25'] = sds011.pm25
 values['pm10'] = sds011.pm10
-pm_en.value(0)                                          # disable voltage regulator
-pm_en.hold(True)                                        # hold pin low during deepsleep
+sds011.sleep()
+
+t_stop = time.ticks_ms()
 
 # write second set of values to display
 display.fill(0)
@@ -157,36 +162,39 @@ display.text("PM2.5: {:> 5} ppm".format(round(values['pm25'], 1)), 1, 31)
 display.text("PM10: {:> 6} ppm" .format(round(values['pm10'], 1)), 1, 41)
 display.text("Accu: {:> 6} %"   .format(round(        perc     )), 1, 54)
 display.show()
-machine.sleep(8000)
-display.poweroff()
 
 # if this is still first boot, start reading GPS to get a location fix
 if wake_reason == machine.PWRON_WAKE:
-    uart2 = machine.UART(2, pins = (pins.TX2, pins.RX2), baudrate = 9600)     # GPS communication
-
+    
     # the GPS module has a pulling rate of 1Hz
     # therefore, if there is no data present within 2 seconds, raise an error
-    machine.sleep(2000)
+    uart2 = machine.UART(2, pins = (pins.TX2, pins.RX2), baudrate = 9600)     # GPS communication
+    time.sleep_ms(2000)
     if not uart2.any():
         pycom.nvs_set("error", 2)
         raise ModuleNotFoundError
 
-    pycom.rgbled(25)                                    # LED dim blue to indicate GPS active
-    
     from lib.micropyGPS import MicropyGPS
     gps = MicropyGPS()                                  # create GPS object
 
+    t = time.ticks_ms()
     # THIS IS A BLOCKING CALL!! there MUST be a reasonable fix before sending data
-    while gps.hdop > 5:
+    while not gps.valid or gps.hdop > 7.5:
         while uart2.any():                              # wait for incoming communication
             my_sentence = uart2.readline()              # read NMEA sentence
             for x in my_sentence:
                 gps.update(chr(x))                      # decode it through micropyGPS
+            if (time.ticks_ms() - t) > 1000:
+                display.fill(0)
+                display.text("fix:  {:> 4}"  .format("yes" if gps.valid else "no"), 1,  1)
+                display.text("hdop: {:> 4}"  .format(round(gps.hdop, 1)),           1, 11)
+                display.text("sats: {:> 4}"  .format(gps.satellites),               1, 21)
+                display.text("time: {:> 4} s".format(round(t/1000)),                1, 31)
+                display.show()
+                t = time.ticks_ms()
 
-    # disable power to GPS module and disable LED
-    gps_en.value(1)
-    gps_en.hold(True)
-    pycom.rgbled(0)
+    gps_en.value(1)                                     # disable power to GPS module
+    gps_en.hold(True)                                   # hold through deepsleep
 
     values['lat'] = gps.latitude
     values['long'] = gps.longitude
@@ -194,6 +202,9 @@ if wake_reason == machine.PWRON_WAKE:
     values['hdop'] = gps.hdop
 
     values['fw'] = pycom.nvs_get('fwversion') % 100     # add current firmware version to values (two trailing numbers)
+
+vr_en.value(0)                                          # disable voltage regulator
+vr_en.hold(True)                                        # hold pin low during deepsleep
 
 # if LoRa failed to join, don't save LoRa context + frame count to NVRAM
 # but throw an error which causes the device to restart from the top
@@ -204,7 +215,6 @@ from LoRa_frame import make_frame
 frame = make_frame(values)                              # pack OrderedDict to LoRa frame
 
 # send LoRa message and store LoRa context + frame count in NVRAM
-import socket
 sckt = socket.socket(socket.AF_LORA, socket.SOCK_RAW)   # create a LoRa socket (blocking by default)
 sckt.setsockopt(socket.SOL_LORA, socket.SO_DR, LORA_DR) # set the LoRaWAN data rate
 sckt.bind(LORA_FPORT)                                   # set the type of message used for decoding the packet
@@ -214,12 +224,16 @@ sckt.close()
 lora.nvram_save()
 pycom.nvs_set('fcnt', LORA_FCNT + 1)
 
+# show values on display for the remainder of 10 seconds
+machine.sleep(10000 - time.ticks_diff(time.ticks_ms(), t_stop))
+display.poweroff()
+
 # if there was an error last time, but we got here now, set register to 0
 if pycom.nvs_get("error") != 0:
     pycom.nvs_set("error", 0)
 
 # set up for deepsleep
-awake_time = time.ticks_ms() - start_time - 3000                # time in milliseconds the program has been running
+awake_time = time.ticks_diff(time.ticks_ms(), t_start) - 3000# time in milliseconds the program has been running
 push_button = machine.Pin(pins.Wake, mode = machine.Pin.IN, pull = machine.Pin.PULL_DOWN)   # initialize wake-up pin
 machine.pin_sleep_wakeup([pins.Wake], mode = machine.WAKEUP_ANY_HIGH, enable_pull = True)   # set wake-up pin as trigger
 machine.deepsleep(pycom.nvs_get('t_int') * 1000 - awake_time)   # deepsleep for remainder of the interval time
