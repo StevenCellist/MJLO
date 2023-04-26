@@ -9,7 +9,6 @@ SCD4X_DEFAULT_ADDR = 0x62
 _SCD4X_REINIT = 0x3646
 _SCD4X_FACTORYRESET = 0x3632
 _SCD4X_FORCEDRECAL = 0x362F
-_SCD4X_SELFTEST = 0x3639
 _SCD4X_DATAREADY = 0xE4B8
 _SCD4X_STOPPERIODICMEAS = 0x3F86
 _SCD4X_STARTPERIODICMEAS = 0x21B1
@@ -18,8 +17,6 @@ _SCD4X_READMEAS = 0xEC05
 _SCD4X_SERIALNUMBER = 0x3682
 _SCD4X_GETTEMPOFFSET = 0x2318
 _SCD4X_SETTEMPOFFSET = 0x241D
-_SCD4X_GETALTITUDE = 0x2322
-_SCD4X_SETALTITUDE = 0x2427
 _SCD4X_SETPRESSURE = 0xE000
 _SCD4X_PERSISTSETTINGS = 0x3615
 _SCD4X_GETASCE = 0x2313
@@ -76,16 +73,14 @@ class SCD41:
         self._send_command(_SCD4X_REINIT, cmd_delay=0.02)
 
     def factory_reset(self) -> None:
-        """Resets all configuration settings stored in the EEPROM and erases the
-        FRC and ASC algorithm history."""
+        """Resets all configuration settings stored in the EEPROM and erases the FRC and ASC algorithm history."""
         self.stop_periodic_measurement()
         self._send_command(_SCD4X_FACTORYRESET, cmd_delay=1.2)
 
     def force_calibration(self, target_co2: int) -> None:
         """Forces the sensor to recalibrate with a given current CO2"""
         self.stop_periodic_measurement()
-        self._set_command_value(_SCD4X_FORCEDRECAL, target_co2)
-        time.sleep(0.5)
+        self._set_command_value(_SCD4X_FORCEDRECAL, target_co2, cmd_delay=0.5)
         self._read_reply(3)
         correction = struct.unpack_from(">h", self._buffer[0:2])[0]
         if correction == 0xFFFF:
@@ -98,13 +93,8 @@ class SCD41:
     def self_calibration_enabled(self) -> bool:
         """Enables or disables automatic self calibration (ASC). To work correctly, the sensor must
         be on and active for 7 days after enabling ASC, and exposed to fresh air for at least 1 hour
-        per day. Consult the manufacturer's documentation for more information.
-
-        .. note::
-            This value will NOT be saved and will be reset on boot unless
-            saved with persist_settings().
-
-        """
+        per day. 
+        .. note: This value will NOT be saved unless saved with persist_settings()."""
         self._send_command(_SCD4X_GETASCE, cmd_delay=0.001)
         self._read_reply(3)
         return self._buffer[1] == 1
@@ -112,14 +102,6 @@ class SCD41:
     @self_calibration_enabled.setter
     def self_calibration_enabled(self, enabled: bool) -> None:
         self._set_command_value(_SCD4X_SETASCE, enabled)
-
-    def self_test(self) -> None:
-        """Performs a self test, takes up to 10 seconds"""
-        self.stop_periodic_measurement()
-        self._send_command(_SCD4X_SELFTEST, cmd_delay=10)
-        self._read_reply(3)
-        if (self._buffer[0] != 0) or (self._buffer[1] != 0):
-            raise RuntimeError("Self test failed")
 
     def _read_data(self) -> None:
         """Reads the temp/hum/co2 from the sensor and caches it"""
@@ -157,29 +139,11 @@ class SCD41:
         self._send_command(_SCD4X_STOPPERIODICMEAS, cmd_delay=0.5)
 
     def start_periodic_measurement(self) -> None:
-        """Put sensor into working mode, about 5s per measurement
-
-        .. note::
-            Only the following commands will work once in working mode:
-
-            * :attr:`CO2 <adafruit_scd4x.SCD4X.CO2>`
-            * :attr:`temperature <adafruit_scd4x.SCD4X.temperature>`
-            * :attr:`relative_humidity <adafruit_scd4x.SCD4X.relative_humidity>`
-            * :meth:`data_ready() <adafruit_scd4x.SCD4x.data_ready>`
-            * :meth:`reinit() <adafruit_scd4x.SCD4X.reinit>`
-            * :meth:`factory_reset() <adafruit_scd4x.SCD4X.factory_reset>`
-            * :meth:`force_calibration() <adafruit_scd4x.SCD4X.force_calibration>`
-            * :meth:`self_test() <adafruit_scd4x.SCD4X.self_test>`
-            * :meth:`set_ambient_pressure() <adafruit_scd4x.SCD4X.set_ambient_pressure>`
-
-        """
+        """Put sensor into working mode, about 5s per measurement"""
         self._send_command(_SCD4X_STARTPERIODICMEAS)
 
     def start_low_periodic_measurement(self) -> None:
-        """Put sensor into low power working mode, about 30s per measurement. See
-        :meth:`start_periodic_measurement() <adafruit_scd4x.SCD4X.start_perodic_measurement>`
-        for more details.
-        """
+        """Put sensor into low power working mode, about 30s per measurement."""
         self._send_command(_SCD4X_STARTLOWPOWERPERIODICMEAS)
 
     def persist_settings(self) -> None:
@@ -195,13 +159,8 @@ class SCD41:
     @property
     def temperature_offset(self) -> float:
         """Specifies the offset to be added to the reported measurements to account for a bias in
-        the measured signal. Value is in degrees Celsius with a resolution of 0.01 degrees and a
-        maximum value of 374 C
-
-        .. note::
-            This value will NOT be saved and will be reset on boot unless saved with
-            persist_settings().
-
+        the measured signal. Value is in degrees Celsius with a resolution of 0.01 degrees
+        .. note: This value will NOT be saved unless saved with persist_settings().
         """
         self._send_command(_SCD4X_GETTEMPOFFSET, cmd_delay=0.001)
         self._read_reply(3)
@@ -216,26 +175,6 @@ class SCD41:
             )
         temp = int(offset * 2**16 / 175)
         self._set_command_value(_SCD4X_SETTEMPOFFSET, temp)
-
-    @property
-    def altitude(self) -> int:
-        """Specifies the altitude at the measurement location in meters above sea level. Setting
-        this value adjusts the CO2 measurement calculations to account for the air pressure's effect
-        on readings.
-
-        .. note::
-            This value will NOT be saved and will be reset on boot unless saved with
-            persist_settings().
-        """
-        self._send_command(_SCD4X_GETALTITUDE, cmd_delay=0.001)
-        self._read_reply(3)
-        return (self._buffer[0] << 8) | self._buffer[1]
-
-    @altitude.setter
-    def altitude(self, height: int) -> None:
-        if height > 65535:
-            raise AttributeError("Height must be less than or equal to 65535 meters")
-        self._set_command_value(_SCD4X_SETALTITUDE, height)
 
     def _check_buffer_crc(self, buf: bytearray) -> bool:
         for i in range(0, len(buf), 3):

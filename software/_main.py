@@ -5,8 +5,9 @@ version_int = int(version_str.replace('v', '').replace('.', ''))
 import time
 import pycom
 import machine
-import network
-import socket
+
+t_boot = time.ticks_ms()                                # save current boot time
+wake_reason = machine.wake_reason()[0]                  # tuple of (wake_reason, GPIO_list)
 
 import pins
 from lib.SSD1306  import SSD1306
@@ -17,11 +18,9 @@ from lib.MAX4466  import MAX4466
 from lib.KP26650  import KP26650
 from lib.SCD41    import SCD41
 from lib.SDS011   import SDS011
+from LoRa         import LoRaWAN
 
 from ucollections import OrderedDict
-
-t_start = time.ticks_ms()                               # save current boot time
-wake_reason = machine.wake_reason()[0]                  # tuple of (wake_reason, GPIO_list)
 
 i2c = machine.I2C(0, pins = (pins.SDA, pins.SCL))       # create I2C object
 display = SSD1306(128, 64, i2c)                         # initialize display (4.4 / 0.0 mA)
@@ -35,63 +34,40 @@ if wake_reason == machine.PWRON_WAKE:
     if reboot:
         machine.reset()                                 # in case of an update, reboot the device
 
+lora = LoRaWAN()                                        # sort out all LoRa related settings (frame count, port, sf)
+
+""" run all sensors """
+values = OrderedDict()                                  # collection of all values, to be returned
+
 # enable power to the voltage regulator (and in turn SDS011) which requires most time
 vr_en = machine.Pin(pins.VR, mode = machine.Pin.OUT)    # voltage regulator SHDN pin
 vr_en.hold(False)                                       # disable hold from deepsleep
 vr_en.value(1)                                          # enable power
 
-uart1 = machine.UART(1, pins=(pins.TX1, pins.RX1), baudrate = 9600) # UART communication to SDS011
+uart1 = machine.UART(1, pins = (pins.TX1, pins.RX1), baudrate = 9600) # UART communication to SDS011
 sds011 = SDS011(uart1)                                  # fine particle sensor (110 / 0.0 mA)
 sds011.wake()
 
-# sort out all LoRa related settings (frame count, port, sf, join state)
-lora = network.LoRa(mode = network.LoRa.LORAWAN, region = network.LoRa.EU868)
-LORA_FCNT = 0                                           # default LoRa frame count
-if wake_reason != machine.PWRON_WAKE:                   # if woken up from deepsleep (timer or button)..
-    lora.nvram_restore()                                # ..restore LoRa information from nvRAM
-    LORA_FCNT = pycom.nvs_get('fcnt')                   # ..restore LoRa frame count from nvRAM
+t_start = time.ticks_ms()                               # keep track of SDS011 wake time
 
-LORA_SF = pycom.nvs_get('sf_l')                         # default SF (low)
-if LORA_FCNT % pycom.nvs_get('adr') == 0:
-    LORA_SF = pycom.nvs_get('sf_h')                     # every adr'th message, send on high SF
-
-lora.sf(LORA_SF)                                        # set SF for this uplink
-LORA_DR = 12 - LORA_SF                                  # calculate DR for this SF
-
-LORA_FPORT = 1                                          # default LoRa packet decoding type 1 (no GPS)
-
-# on first boot, also join LoRa, powerup GPS in advance
+# on first boot, powerup GPS in advance as well (powered through voltage regulator)
 if wake_reason == machine.PWRON_WAKE:
-    import secret
-    mode = network.LoRa.OTAA if pycom.nvs_get('lora') == 0 else network.LoRa.ABP
-    lora.join(activation = mode, auth = secret.auth(), dr = LORA_DR)
-    # don't wait for has_joined() here: gps + sensors take much longer
-
-    LORA_FPORT = 2                                      # LoRa packet decoding type 2 (GPS)
-
     gps_en = machine.Pin(pins.GPS, mode = machine.Pin.OUT)  # 2N2907 (PNP) gate pin
     gps_en.hold(False)                                  # disable hold from deepsleep
     gps_en.value(0)                                     # enable GPS power
+    lora.fport = 2                                      # set LoRa decoding type 2 (includes GPS)
+    lora.sf = pycom.nvs_get('sf_h')                     # send GPS on high SF
 
-# show some stats on screen
+# show some stats on screen while sensors are busy
 display.fill(0)
 display.text("MJLO-{:>02}" .format(pycom.nvs_get('node')), 1,  1)
 display.text("FW {}"       .format(version_str),           1, 11)
-display.text("SF    {:> 4}".format(LORA_SF),               1, 34)
-display.text("fport {:> 4}".format(LORA_FPORT),            1, 44)
-display.text("fcnt {:> 5}" .format(LORA_FCNT),             1, 54)
+display.text("sf    {:> 4}".format(lora.sf),               1, 34)
+display.text("fport {:> 4}".format(lora.fport),            1, 44)
+display.text("fcnt {:> 5}" .format(lora.fcnt),             1, 54)
 display.show()
 
-# run all sensors
-values = OrderedDict()                                  # collection of all values, to be returned
-
-# scd41 = SCD41(i2c = i2c, address = 98)                  # CO2 sensor (50 / 0.2 mA) (0x62)
-# scd41.wake()
-# machine.sleep(200)
-# scd41.measure_single_shot()
-t_start = time.ticks_ms()                               # keep track of wake time (5 seconds)
-
-bme680 = BME680(i2c = i2c, address = 119)
+bme680 = BME680(i2c = i2c, address = 119)               # temp, hum, pres & voc sensor (12 / 0.0 mA) (0x77)
 bme680.set_gas_heater_temperature(400, nb_profile = 1)  # set VOC plate heating temperature
 bme680.set_gas_heater_duration(50, nb_profile = 1)      # set VOC plate heating duration
 bme680.select_gas_heater_profile(1)                     # select those settings
@@ -117,10 +93,10 @@ machine.sleep(200)                                      # sensor stabilization t
 values['uv'] = veml6070.uv_raw                          # first poll may fail so do it twice
 veml6070.sleep()
 
-max4466 =  MAX4466(pins.Vol, duration = 200)            # analog loudness sensor (200ms measurement)
+max4466 =  MAX4466(pins.Vol, duration = 500)            # analog loudness sensor (500ms measurement)
 values['volu'] = max4466.get_volume()                   # active: 0.3 mA, sleep: 0.3 mA (always on)
 
-battery =  KP26650(pins.Batt, duration = 50, ratio = 2) # battery voltage (50ms measurement, 1:1 voltage divider)
+battery =  KP26650(pins.Batt, duration = 200, ratio = 2)# battery voltage (200ms measurement, 1:1 voltage divider)
 values['batt'] = battery.get_voltage()
 perc = battery.get_percentage(lb = 3.4, ub = 4.3)       # map voltage from 3.4..4.3 V to 0..100%
 
@@ -134,11 +110,13 @@ display.text("UV: {:> 8}"       .format(round(values[  'uv']   )), 1, 41)
 display.text("Accu: {:> 6} %"   .format(round(        perc     )), 1, 54)
 display.show()
 
-# while not scd41.data_ready:                             # wait for flag
-#     machine.sleep(200)
-# values['co2'] = scd41.CO2
-# scd41.sleep()
-values['co2'] = 0
+scd41 =    SCD41(i2c = i2c, address = 98)               # CO2 sensor (50 / 0.2 mA) (0x62)
+scd41.wake()
+machine.sleep(200)                                      # apparently needs some extra time to wake
+scd41.measure_single_shot()                             # start measurement, takes 5 seconds to complete
+machine.sleep(5000)
+values['co2'] = scd41.CO2
+scd41.sleep()
 
 # sleep for the remainder of 25 seconds
 machine.sleep(25000 - time.ticks_diff(time.ticks_ms(), t_start)) 
@@ -168,10 +146,9 @@ if wake_reason == machine.PWRON_WAKE:
     
     # the GPS module has a pulling rate of 1Hz
     # therefore, if there is no data present within 2 seconds, raise an error
-    uart2 = machine.UART(2, pins = (pins.TX2, pins.RX2), baudrate = 9600)     # GPS communication
+    uart2 = machine.UART(2, pins = (pins.TX2, pins.RX2), baudrate = 9600)
     time.sleep_ms(2000)
     if not uart2.any():
-        pycom.nvs_set("error", 2)
         raise ModuleNotFoundError
 
     from lib.micropyGPS import MicropyGPS
@@ -206,34 +183,23 @@ if wake_reason == machine.PWRON_WAKE:
 vr_en.value(0)                                          # disable voltage regulator
 vr_en.hold(True)                                        # hold pin low during deepsleep
 
-# if LoRa failed to join, don't save LoRa context + frame count to NVRAM
-# but throw an error which causes the device to restart from the top
-if not lora.has_joined():
+# if LoRa failed to join, throw an error which causes the device to restart from the top
+if not lora.has_joined:
     raise ConnectionAbortedError
 
-from LoRa_frame import make_frame
-frame = make_frame(values)                              # pack OrderedDict to LoRa frame
-
-# send LoRa message and store LoRa context + frame count in NVRAM
-sckt = socket.socket(socket.AF_LORA, socket.SOCK_RAW)   # create a LoRa socket (blocking by default)
-sckt.setsockopt(socket.SOL_LORA, socket.SO_DR, LORA_DR) # set the LoRaWAN data rate
-sckt.bind(LORA_FPORT)                                   # set the type of message used for decoding the packet
-sckt.send(frame)
-sckt.close()
-
-lora.nvram_save()
-pycom.nvs_set('fcnt', LORA_FCNT + 1)
+lora.make_frame(values)
+lora.send_frame()
 
 # show values on display for the remainder of 10 seconds
 machine.sleep(10000 - time.ticks_diff(time.ticks_ms(), t_stop))
 display.poweroff()
 
 # if there was an error last time, but we got here now, set register to 0
-if pycom.nvs_get("error") != 0:
+if pycom.nvs_get("error"):
     pycom.nvs_set("error", 0)
 
 # set up for deepsleep
-awake_time = time.ticks_diff(time.ticks_ms(), t_start) - 3000# time in milliseconds the program has been running
-push_button = machine.Pin(pins.Wake, mode = machine.Pin.IN, pull = machine.Pin.PULL_DOWN)   # initialize wake-up pin
+awake_time = time.ticks_diff(time.ticks_ms(), t_boot) - 3000                    # time in milliseconds the program has been running
+machine.Pin(pins.Wake, mode = machine.Pin.IN, pull = machine.Pin.PULL_DOWN)     # initialize wake-up pin
 machine.pin_sleep_wakeup([pins.Wake], mode = machine.WAKEUP_ANY_HIGH, enable_pull = True)   # set wake-up pin as trigger
-machine.deepsleep(pycom.nvs_get('t_int') * 1000 - awake_time)   # deepsleep for remainder of the interval time
+machine.deepsleep(pycom.nvs_get('t_int') * 1000 - awake_time)                   # deepsleep for remainder of the interval time
