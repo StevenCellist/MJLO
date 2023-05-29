@@ -1,5 +1,5 @@
 #_main.py -- frozen into the firmware along all other modules
-version_str = "v2.7.0"
+version_str = "v2.7.1"
 version_int = int(version_str.replace('v', '').replace('.', ''))
 
 import time
@@ -7,7 +7,11 @@ import pycom
 import machine
 
 t_boot = time.ticks_ms()                                # save current boot time
-wake_reason = machine.wake_reason()[0]                  # tuple of (wake_reason, GPIO_list)
+
+USE_SD   = machine.reset_cause() == machine.PWRON_RESET # check SD card if there was a reset / poweron
+USE_GPS  = machine.reset_cause() == machine.PWRON_RESET # use GPS if there was a reset / poweron
+USE_GPS |= machine.reset_cause() == machine.WDT_RESET   # use GPS if there was an update or error last time
+USE_GPS |= machine.wake_reason()[0] == machine.PIN_WAKE # use GPS if the green button was pressed
 
 import pins
 from lib.SSD1306  import SSD1306
@@ -25,19 +29,17 @@ from ucollections import OrderedDict
 i2c = machine.I2C(0, pins = (pins.SDA, pins.SCL))       # create I2C object
 display = SSD1306(128, 64, i2c)                         # initialize display (4.4 / 0.0 mA)
 
-# on first boot, disable integrated LED and WiFi, set firmware version, check for SD card updates
-if wake_reason == machine.PWRON_WAKE:
-    pycom.nvs_set('fwversion', version_int)
+# update firmware register if necessary, and check for SD card updates
+if USE_SD:
+    if pycom.nvs_get('fwversion') != version_int:
+        pycom.nvs_set('fwversion', version_int)
+    if pycom.nvs_get('error'):
+        pycom.nvs_set('error', 0)
 
     from updateFW import check_SD
     reboot = check_SD(display)                          # check if an SD card is present and apply any changes
     if reboot:
         machine.reset()                                 # in case of an update, reboot the device
-
-lora = LoRaWAN()                                        # sort out all LoRa related settings (frame count, port, sf)
-
-""" run all sensors """
-values = OrderedDict()                                  # collection of all values, to be returned
 
 # enable power to the voltage regulator (and in turn SDS011) which requires most time
 vr_en = machine.Pin(pins.VR, mode = machine.Pin.OUT)    # voltage regulator SHDN pin
@@ -50,8 +52,10 @@ sds011.wake()
 
 t_start = time.ticks_ms()                               # keep track of SDS011 wake time
 
-# on first boot, powerup GPS in advance as well (powered through voltage regulator)
-if wake_reason == machine.PWRON_WAKE:
+lora = LoRaWAN()                                        # sort out all LoRa related settings (frame count, port, sf)
+
+# if necessary, powerup GPS in advance (powered through voltage regulator)
+if USE_GPS:
     gps_en = machine.Pin(pins.GPS, mode = machine.Pin.OUT)  # 2N2907 (PNP) gate pin
     gps_en.hold(False)                                  # disable hold from deepsleep
     gps_en.value(0)                                     # enable GPS power
@@ -67,6 +71,9 @@ display.text("fport {:> 4}".format(lora.fport),            1, 44)
 display.text("fcnt {:> 5}" .format(lora.fcnt),             1, 54)
 display.show()
 
+# start collection of all sensor data
+values = OrderedDict()                                  # ordered collection of all values
+
 bme680 = BME680(i2c = i2c, address = 119)               # temp, hum, pres & voc sensor (12 / 0.0 mA) (0x77)
 bme680.set_gas_heater_temperature(400, nb_profile = 1)  # set VOC plate heating temperature
 bme680.set_gas_heater_duration(50, nb_profile = 1)      # set VOC plate heating duration
@@ -81,16 +88,16 @@ bme680.set_power_mode(0)
 
 tsl2591 =  TSL2591(i2c = i2c, address = 41)             # lux sensor (0.4 / 0.0 mA) (0x29)
 tsl2591.wake()
-values['lx'] = tsl2591.lux
-machine.sleep(200)                                      # sensor stabilization time (required!!)
+values['lx'] = tsl2591.lux                              # don't ask why but this may do nothing, so poll twice
+machine.sleep(200)                                      # sensor stabilization time
 values['lx'] = tsl2591.lux
 tsl2591.sleep()
 
 veml6070 = VEML6070(i2c = i2c, address = 56)            # UV sensor (0.4 / 0.0 mA) (0x38)
 veml6070.wake()
+values['uv'] = veml6070.uv_raw                          # don't ask why but this may do nothing, so poll twice
+machine.sleep(200)                                      # sensor stabilization time
 values['uv'] = veml6070.uv_raw
-machine.sleep(200)                                      # sensor stabilization time (required!!)
-values['uv'] = veml6070.uv_raw                          # first poll may fail so do it twice
 veml6070.sleep()
 
 max4466 =  MAX4466(pins.Vol, duration = 500)            # analog loudness sensor (500ms measurement)
@@ -98,7 +105,7 @@ values['volu'] = max4466.get_volume()                   # active: 0.3 mA, sleep:
 
 battery =  KP26650(pins.Batt, duration = 200, ratio = 2)# battery voltage (200ms measurement, 1:1 voltage divider)
 values['batt'] = battery.get_voltage()
-perc = battery.get_percentage(lb = 3.4, ub = 4.3)       # map voltage from 3.4..4.3 V to 0..100%
+perc = battery.get_percentage(lb = 3.1, ub = 4.3)       # map voltage from 3.1..4.3 V to 0..100%
 
 # write first set of values to display
 display.fill(0)
@@ -141,8 +148,8 @@ display.text("PM10: {:> 6} ppm" .format(round(values['pm10'], 1)), 1, 41)
 display.text("Accu: {:> 6} %"   .format(round(        perc     )), 1, 54)
 display.show()
 
-# if this is still first boot, start reading GPS to get a location fix
-if wake_reason == machine.PWRON_WAKE:
+# if necessary, start reading GPS to get a location fix
+if USE_GPS:
     
     # the GPS module has a pulling rate of 1Hz
     # therefore, if there is no data present within 2 seconds, raise an error
@@ -156,17 +163,20 @@ if wake_reason == machine.PWRON_WAKE:
 
     t = time.ticks_ms()
     # THIS IS A BLOCKING CALL!! there MUST be a reasonable fix before sending data
-    while not gps.valid or gps.hdop > 7.5:
+    while not gps.valid or gps.hdop > 5:
         while uart2.any():                              # wait for incoming communication
             my_sentence = uart2.readline()              # read NMEA sentence
             for x in my_sentence:
                 gps.update(chr(x))                      # decode it through micropyGPS
-            if (time.ticks_ms() - t) > 1000:
+
+            # every two seconds, update some stats on the display
+            if (time.ticks_ms() - t) > 2000:
                 display.fill(0)
-                display.text("fix:  {:> 4}"  .format("yes" if gps.valid else "no"), 1,  1)
-                display.text("hdop: {:> 4}"  .format(round(gps.hdop, 1)),           1, 11)
-                display.text("sats: {:> 4}"  .format(gps.satellites),               1, 21)
-                display.text("time: {:> 4} s".format(round(t/1000)),                1, 31)
+                display.text("GPS stats:",                                          1,  1)
+                display.text("fix:  {:> 4}"  .format("yes" if gps.valid else "no"), 1, 11)
+                display.text("hdop: {:> 4}"  .format(round(gps.hdop, 1)),           1, 21)
+                display.text("sats: {:> 4}"  .format(gps.satellites),               1, 31)
+                display.text("time: {:> 4} s".format(round(t/1000)),                1, 41)
                 display.show()
                 t = time.ticks_ms()
 
@@ -183,9 +193,9 @@ if wake_reason == machine.PWRON_WAKE:
 vr_en.value(0)                                          # disable voltage regulator
 vr_en.hold(True)                                        # hold pin low during deepsleep
 
-# if LoRa failed to join, throw an error which causes the device to restart from the top
+# if LoRa failed to join, perform a reset which causes the device to restart from the top
 if not lora.has_joined:
-    raise ConnectionAbortedError
+    machine.reset()
 
 lora.make_frame(values)
 lora.send_frame()

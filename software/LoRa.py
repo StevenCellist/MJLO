@@ -1,6 +1,7 @@
 import network
 import socket
 import pycom
+import time
 
 _configs = { # bytes, offset, precision
         'temp' : (2, 100, 0.01  ),
@@ -10,7 +11,7 @@ _configs = { # bytes, offset, precision
         'uv'   : (2,   0, 1     ),
         'lx'   : (2,   0, 1     ),
         'volu' : (1,   0, 0.5   ),
-        'batt' : (2,   0, 0.01  ),
+        'batt' : (2,   0, 0.001 ),
         'co2'  : (2,   0, 0.1   ),
         'pm25' : (2,   0, 0.1   ),
         'pm10' : (2,   0, 0.1   ),
@@ -19,11 +20,11 @@ _configs = { # bytes, offset, precision
         'alt'  : (2, 100, 0.1   ),
         'hdop' : (1,   0, 0.1   ),
         'fw'   : (1,   0, 1     ),
-        'error': (1,   0, 1     )
+        'error': (1, 128, 1     )
 }
 
 class LoRaWAN:
-    def __init__(self):
+    def __init__(self, sf = None, fport = None):
         # create lora object
         self.lora = network.LoRa(mode = network.LoRa.LORAWAN, region = network.LoRa.EU868)
 
@@ -36,19 +37,24 @@ class LoRaWAN:
         # this join is performed non-blocking as it should have completed before sending a message
         if not self.has_joined:
             import secret
-            mode = network.LoRa.OTAA if pycom.nvs_get('lora') == 0 else network.LoRa.ABP
-            self.lora.join(activation = mode,                       # OTAA or ABP
+            self.lora.join(activation = pycom.nvs_get('lora'),      # 0 = OTAA, 1 = ABP
                            auth = secret.auth(),                    # get keys for this specific node
                            dr = 12 - pycom.nvs_get('sf_h'))         # always join using maximum power
             self._fcnt = 0                                          # default LoRa frame count
         else:
             self._fcnt = pycom.nvs_get('fcnt')                      # restore LoRa frame count from nvRAM
 
-        self._dr = 12 - pycom.nvs_get('sf_l')                       # default SF (low)
-        if self._fcnt % pycom.nvs_get('adr') == 0:
-            self._dr = 12 - pycom.nvs_get('sf_h')                   # every adr'th message, send on high SF
+        if sf:
+            self._dr = 12 - sf
+        else:
+            self._dr = 12 - pycom.nvs_get('sf_l')                   # default SF (low)
+            if self._fcnt % pycom.nvs_get('adr') == 0:
+                self._dr = 12 - pycom.nvs_get('sf_h')               # every adr'th message, send on high SF
 
-        self._fport = 1                                             # default LoRa packet decoding type 1 (no GPS)
+        if fport:
+            self._fport = 4
+        else:
+            self._fport = 1                                         # default LoRa packet decoding type 1 (no GPS)
 
         self._frame = bytes([])
     
@@ -98,9 +104,13 @@ class LoRaWAN:
 
         return len(self._frame)
 
-    def send_frame(self):
+    def send_frame(self, join_flag = False):
         if not self._frame:
             raise AttributeError("empty frame")
+        
+        if join_flag:
+            while not self.has_joined:
+                time.sleep(1)
         
         # send LoRa message and store LoRa context + frame count in NVRAM
         sckt = socket.socket(socket.AF_LORA, socket.SOCK_RAW)       # create a LoRa socket (blocking by default)
