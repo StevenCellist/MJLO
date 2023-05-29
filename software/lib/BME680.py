@@ -100,37 +100,37 @@ def twos_comp(val, bits = 8):
 class CalibrationData:
     """Structure for storing BME680 calibration data."""
 
-    def set_from_array(self, calibration):
+    def set_from_array(self, cal):
         # Temperature related coefficients
-        self.par_t1 = bytes_to_word(calibration[34], calibration[33], signed = False)
-        self.par_t2 = bytes_to_word(calibration[2], calibration[1])
-        self.par_t3 = twos_comp(calibration[3])
+        self.par_t1 = bytes_to_word(cal[34], cal[33], signed = False)
+        self.par_t2 = bytes_to_word(cal[2], cal[1])
+        self.par_t3 = twos_comp(cal[3])
 
         # Pressure related coefficients
-        self.par_p1 = bytes_to_word(calibration[6], calibration[5], signed = False)
-        self.par_p2 = bytes_to_word(calibration[8], calibration[7])
-        self.par_p3 = twos_comp(calibration[9])
-        self.par_p4 = bytes_to_word(calibration[12], calibration[11])
-        self.par_p5 = bytes_to_word(calibration[14], calibration[13])
-        self.par_p6 = twos_comp(calibration[16])
-        self.par_p7 = twos_comp(calibration[15])
-        self.par_p8 = bytes_to_word(calibration[20], calibration[19])
-        self.par_p9 = bytes_to_word(calibration[22], calibration[21])
-        self.par_p10 = calibration[23]
+        self.par_p1 = bytes_to_word(cal[6], cal[5], signed = False)
+        self.par_p2 = bytes_to_word(cal[8], cal[7])
+        self.par_p3 = twos_comp(cal[9])
+        self.par_p4 = bytes_to_word(cal[12], cal[11])
+        self.par_p5 = bytes_to_word(cal[14], cal[13])
+        self.par_p6 = twos_comp(cal[16])
+        self.par_p7 = twos_comp(cal[15])
+        self.par_p8 = bytes_to_word(cal[20], cal[19])
+        self.par_p9 = bytes_to_word(cal[22], cal[21])
+        self.par_p10 = cal[23]
 
         # Humidity related coefficients
-        self.par_h1 = (calibration[27] << 4) | (calibration[26] & BIT_H1_DATA_MSK)
-        self.par_h2 = (calibration[25] << 4) | (calibration[26] >> 4)
-        self.par_h3 = twos_comp(calibration[28])
-        self.par_h4 = twos_comp(calibration[29])
-        self.par_h5 = twos_comp(calibration[30])
-        self.par_h6 = calibration[31]
-        self.par_h7 = twos_comp(calibration[32])
+        self.par_h1 = (cal[27] << 4) | (cal[26] & BIT_H1_DATA_MSK)
+        self.par_h2 = (cal[25] << 4) | (cal[26] >> 4)
+        self.par_h3 = twos_comp(cal[28])
+        self.par_h4 = twos_comp(cal[29])
+        self.par_h5 = twos_comp(cal[30])
+        self.par_h6 = cal[31]
+        self.par_h7 = twos_comp(cal[32])
 
         # Gas heater related coefficients
-        self.par_gh1 = twos_comp(calibration[37])
-        self.par_gh2 = bytes_to_word(calibration[36], calibration[35])
-        self.par_gh3 = twos_comp(calibration[38])
+        self.par_gh1 = twos_comp(cal[37])
+        self.par_gh2 = bytes_to_word(cal[36], cal[35])
+        self.par_gh3 = twos_comp(cal[38])
 
     def set_other(self, heat_range, heat_value, sw_error):
         """Set other values."""
@@ -179,10 +179,7 @@ class BME680:
         time.sleep(POLL_PERIOD_MS / 1000.0)
 
     def set_temp_offset(self, value):
-        """Set temperature offset in celsius.
-        If set, the temperature t_fine will be increased by given value in celsius.
-        :param value: Temperature offset in Celsius, eg. 4, -8, 1.25
-        """
+        """Set temperature offset in celsius."""
         if value == 0:
             self.offset_temp_in_t_fine = 0
         else:
@@ -198,13 +195,10 @@ class BME680:
         self._set_bits(CONF_T_P_MODE_ADDR, OST_MSK, OST_POS, value)
 
     def set_filter(self, value):
-        """Set IIR filter size.
-        Optionally remove short term fluctuations from the temperature and pressure readings,
-        increasing their resolution but reducing their bandwidth.
+        """Set IIR filter size. 
+        Removes short term fluctuations from the temperature and pressure readings.
         Enabling the IIR filter does not slow down the time a reading takes, but will slow
         down the BME680s response to changes in temperature and pressure.
-        When the IIR filter is enabled, the temperature and pressure resolution is effectively 20bit.
-        When it is disabled, it is 16bit + oversampling-1 bits.
         """
         self._set_bits(CONF_ODR_FILT_ADDR, FILTER_MSK, FILTER_POS, value)
 
@@ -213,8 +207,7 @@ class BME680:
 
     def select_gas_heater_profile(self, value):
         """Set current gas sensor conversion profile.
-        Select one of the 10 configured heating durations/set points.
-        :param value: Profile index from 0 to 9
+        Select one of the 10 configured heating durations/set points (0 to 9).
         """
         self._set_bits(CONF_ODR_RUN_GAS_NBC_ADDR, NBCONV_MSK, NBCONV_POS, value)
 
@@ -223,16 +216,12 @@ class BME680:
         self._set_bits(CONF_ODR_RUN_GAS_NBC_ADDR, RUN_GAS_MSK, RUN_GAS_POS, value)
 
     def set_gas_heater_temperature(self, value, nb_profile=0):
-        """Set gas sensor heater temperature.
-        :param value: Target temperature in degrees celsius, between 200 and 400
-        """
+        """Set gas sensor heater temperature (degrees celsius, between 200 and 400)."""
         temp = int(self._calc_heater_resistance(value))
         self._write(RES_HEAT0_ADDR + nb_profile, temp)
 
     def set_gas_heater_duration(self, value, nb_profile=0):
-        """Set gas sensor heater duration.
-        :param value: Heating duration in milliseconds between 1 ms and 4032 (typical 20~30 ms)
-        """
+        """Set gas sensor heater duration (in milliseconds between 1 ms and 4032 (typical 20~30 ms)."""
         temp = self._calc_heater_duration(value)
         self._write(GAS_WAIT0_ADDR + nb_profile, temp)
 

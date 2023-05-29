@@ -45,14 +45,14 @@ Let op: versie 3.1 van dit breakout board verschilt op meer vlakken van v3.0 dan
 [Voltage divider: mess](https://community.hiveeyes.org/t/batterieuberwachung-voltage-divider-und-attenuation-fur-micropython-firmware/2128/46?page=2)  
 
 ## Stroomgebruik en spanning
-***Verouderd: v2.0 i.t.t. huidige v2.5***  
+***Verouderd: v2.0 i.t.t. huidige v2.7***  
 Zie de figuur hieronder voor het stroomgebruik van de vorige versie software. De gemiddelde stroomsterkte tijdens activiteit is 105 mA; in deepsleep 3.4 mA.  
 De vermoedde accuduur is drie weken, waarbij het zonnepaneel buiten beschouwing wordt gelaten.  
 ![Stroomgebruik MJLO-12 op v19.01.22](Stroomgebruik_v19_01_22.png)
 
 ## Schema
 Zie de figuur voor de opbouw van het circuit in de sensorkastjes.
-![Schematic v2.5 15-08-2022](Schematic_Meet_je_leefomgeving_2022-09-01.svg)
+![Schematic v2.7 15-04-2023](Schematic_Meet_je_leefomgeving_2023-04-15.svg)
 
 ## Custom firmware
 De eenvoudige variant voor het ontwikkelen van software is het uploaden van alle losse bestanden naar `/flash`. Bij het wijzigen van een bestand kan dat losse bestand snel gewijzigd en opnieuw geupload worden. Er zijn echter meerdere nadelen aan verbonden:
@@ -82,15 +82,21 @@ De volgende twee regels moeten elke keer uitgevoerd worden bij het openen van ee
 
 (De volgende opmerkingen gaan er allemaal vanuit dat je je in de map `pycom-micropython-sigfox/esp32` bevindt.)
 
-Om bestanden in te vriezen, moeten ze in de subfolder `/frozen/Base` geplaatst worden. Standaard staan daar een `_boot.py` en `_main.py`: die kunnen overschreven worden met de desbetreffende bestanden uit deze repository zonder verlies van functionaliteit.  
+Om bestanden te bevriezen, moeten ze in de subfolder `/frozen/Base` geplaatst worden. Standaard staan daar een `_boot.py` en `_main.py`: die kunnen overschreven worden met de desbetreffende bestanden uit deze repository zonder verlies van functionaliteit.  
 Om relatieve imports te behouden (bijvoorbeeld `import lib.SSD1306`) kan de map `/lib` ook gewoon binnen de map `/frozen/Base` geplaatst worden.  
 Let op: het is niet mogelijk de bestanden `boot.py` en `main.py` zelf te bevriezen: die worden standaard geleegd bij het compilen.
 
 Om de versienaam aan te passen:
 * `nano pycom_version.h` -> regel 13: aanpassen
+[bron](https://forum.pycom.io/topic/3902/frozen-modules-for-my-sipy-solved/3)
 
 Om aan te passen welk bestand er uitgevoerd wordt na `_boot.py` en `_main.py` (in dit geval `"error.py"` in `/frozen/Base`):
 * `nano mptask.c` -> regel 339: vervang `pyexec_file(main.py)` door `pyexec_frozen_module("error.py")`
+[bron](https://forum.pycom.io/topic/2038/flashing-with-frozen-main-py-and-boot-py/4)
+
+Om een `OrderedDict` toe te voegen:
+* `nano mpconfigport.h` -> regel 79 nieuwe regel: `#define MICROPY_PY_COLLECTIONS_ORDEREDDICT (1)`
+[bron](https://forum.pycom.io/topic/972/enable-ordereddict-support-by-default/5)
 
 De volgende regels zijn (elke keer) nodig om de firmware te compilen:
 * `make clean`
@@ -99,9 +105,9 @@ De volgende regels zijn (elke keer) nodig om de firmware te compilen:
 
 Het resulterende `.tar.gz` bestand staat in de subfolder `/build`. Dit bestand kan gebruikt worden om de LoPy4 te flashen via de Pycom Firmware Updater. Om het `.bin` bestand te verkrijgen dat nodig is voor de OTA updates, moet de `.tar.gz` uitgepakt worden via bijvoorbeeld `tar -xzf filename`: het resulterende `lopy4.bin` is het gezochte bestand.
 
-[Installing pycom-esp-idf](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/linux-macos-setup.html)
-[Installing pycom-micropython-sigfox](https://github.com/pycom/pycom-micropython-sigfox)
-[Frozen modules documentation](https://docs.pycom.io/advance/frozen/)
-[Modyfing startup sequence](https://forum.pycom.io/topic/2038/flashing-with-frozen-main-py-and-boot-py/6)
-[Relative frozen imports](https://forum.pycom.io/topic/7255/lib-folder-in-frozen-base)
-[Pycom Firmware Updater](https://docs.pycom.io/updatefirmware/device/)
+[Installing pycom-esp-idf](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/linux-macos-setup.html)   
+[Installing pycom-micropython-sigfox](https://github.com/pycom/pycom-micropython-sigfox)  
+[Frozen modules documentation](https://docs.pycom.io/advance/frozen/)  
+[Modyfing startup sequence](https://forum.pycom.io/topic/2038/flashing-with-frozen-main-py-and-boot-py/6)  
+[Relative frozen imports](https://forum.pycom.io/topic/7255/lib-folder-in-frozen-base)  
+[Pycom Firmware Updater](https://docs.pycom.io/updatefirmware/device/)  
