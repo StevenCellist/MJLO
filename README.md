@@ -49,11 +49,11 @@ Let op: versie 3.1 van dit breakout board verschilt op meer vlakken van v3.0 dan
 ## Stroomgebruik
 Zie de figuur hieronder voor het stroomgebruik van een kastje (zonder dat het zonnepaneeltje is aangesloten). De gemiddelde stroomsterkte tijdens een meting is 100 mA; in deepsleep een kleine 3 mA.  
 De accuduur is ongeveer drie weken, waarbij het zonnepaneel buiten beschouwing wordt gelaten.  
-![Stroomgebruik op FW v2.7.0](extras\Stroomgebruik_MJLO_v2_7_0.svg)
+![Stroomgebruik op FW v2.7.0](extras/Stroomgebruik_MJLO_v2_7_0.svg)
 
 ## Schema
 Zie de figuur voor de opbouw van het circuit in de sensorkastjes.
-![Schematic v2.7 26-04-2023](extras\Schematic_MJLO_v2_7_0.svg)
+![Schematic v2.7 26-04-2023](extras/Schematic_MJLO_v2_7_0.svg)
 
 ## Custom firmware
 De eenvoudige variant voor het ontwikkelen van software is het uploaden van alle losse bestanden naar `/flash`. Bij het wijzigen van een bestand kan dat losse bestand snel gewijzigd en opnieuw geupload worden. Er zijn echter meerdere nadelen aan verbonden:
