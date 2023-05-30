@@ -5,21 +5,23 @@ Bij interesse om aan te sluiten bij het project kan contact opgenomen worden via
 In principe is bijna alles openbaar te vinden op deze site, met uitzondering van enkele 'secrets'.  
 
 ## Een kastje flashen en activeren
-Download de officiële release en flash deze op de LoPy4 door middel van de Pycom Firmware Updater (flash from local file, use LittleFS). Vervolgens moet eenmalig een aantal registers opgeslagen worden voor instellingen: daarvoor is bij releases meestal een bestand `upgrade.py` beschikbaar. Stel daarin het nummer voor de *node* in, en steek het vervolgens via een microSD in het Expansion Board. Bij juiste benaming van het bestand (secret), wordt het uitgevoerd. Verder is er nog een bestand `secret.py` dat hier niet te vinden is en noodzakelijke sleutels bevat voor activatie van het kastje.
+Download de officiële release en flash deze op de LoPy4 door middel van de Pycom Firmware Updater (flash from local file, use LittleFS). Vervolgens moet eenmalig een aantal registers opgeslagen worden voor instellingen: daarvoor is bij releases meestal een bestand `upgrade.py` beschikbaar. Stel daarin het nummer voor de *node* in, en steek het vervolgens via een microSD in het Expansion Board. Bij juiste benaming van het bestand (dat is een secret), wordt het uitgevoerd. Verder is er nog een bestand `secret.py` dat hier niet te vinden is en noodzakelijke sleutels bevat voor activatie van het kastje.
 
 ## Algemene opzet
 De focus van de kastjes ligt uiteraard op uithoudingsvermogen. Praktisch betekent dat dat elke sensor zo kort mogelijk actief is en de stroomsterkte geminimaliseerd is.  
 Met dat doel voor ogen is de volgende constructie opgezet:  
-De kastjes worden zes keer per uur 'wakker' uit een diepe slaapstand. Twee keer daarvan worden alle sensoren (behalve GPS) gebruikt, dus inclusief de CO2- en fijnstofsensoren. Deze laatste twee sensoren moeten beide circa 30 seconden actief zijn om een goede meetwaarde te genereren. Om te voorkomen dat deze sensoren 'voor niets' meten, worden de berichtjes bij deze twee sessies op maximale zendkracht verzonden: SF12.  
-De andere vier keer dat de kastjes wakker worden, staan ze zo kort mogelijk aan: de CO2- en fijnstofsensoren worden dus niet ingeschakeld (net als GPS). Omdat er niet altijd op SF12 verzonden mag worden (zie verderop), worden deze berichtjes verzonden op SF10. Het is mooi meegenomen als deze berichtjes aankomen, maar niet al te erg als dat niet gebeurt.  
-Eén keer per dag wordt de GPS-module geactiveerd. De kastjes zullen nauwelijks verplaatsen, dus is één keer per dag afdoende. Soms is het GPS-bereik echter vrij slecht vanwege obstakels, dus wordt er een timeout gebruikt van 120 seconden: wordt er binnen die tijd geen locatie gevonden, schakelt GPS weer uit.
+De kastjes worden zes keer per uur 'wakker' uit een diepe slaapstand. Als eerste wordt de fijnstofsensor geactiveerd: deze moet ongeveer 25 tot 30 seconden aanstaan om een goede meetwaarde te krijgen. Ondertussen worden een voor een de andere sensoren uitgelezen.   
+Zodra de eerste helft aan sensoren gemeten is, worden die meetwaarden op het scherm weergegeven. De tweede helft wordt weergegeven zodra de andere sensoren zijn gemeten.  
+Terwijl de tweede set aan waarden op het display staat, wordt de data verzonden via LoRa. Elk derde bericht wordt verzonden op SF12, de andere twee op SF10: er mag namelijk niet continu op SF12 worden gecommuniceerd. Daarna wordt nog een paar seconden gewacht zodat het display nog even af te lezen is.  
 
-Zodra een meetcyclus voltooid is toont het kastje eerst de gemeten waarden op het display waarbij gebruik gemaakt wordt van een *lightsleep* met verminderd stroomverbruik; daarna gaat het kastje in *deepsleep* waarbij nagenoeg alle componenten uitgeschakeld zijn: alleen de drukknop aan de zijkant van het kastje wordt nog gemonitord. Wordt die knop ingedrukt, dan wordt er een geforceerde meting op SF12 uitgevoerd. Dit helpt bijvoorbeeld bij het debuggen of testen van bereik, of bij bepaalde opdrachten waarbij leerlingen vaker een meting zouden willen doen dan het standaard-interval van 10 minuten.
+De GPS-module wordt alleen bij het opstarten geactiveerd - daarna wordt aangenomen dat een kastje volledig stationair is en niet verplaatst wordt terwijl hij actief is. De GPS-module staat aan totdat er een locatie fix is: een valide locatie met een hdop < 7.5. Daarna wordt GPS uitgeschakeld.
 
-## LoRa, The Things Network en Cayenne Low Power Payload
-De data van de kastjes wordt verzonden via het LoRa (Long Range) protocol. De kastjes fungeren als *end node* en communiceren met de antennes bovenop het Ichthus College en eventuele andere antennes in de omgeving (Scherpenzeel, Aalst, ..). Daarvoor kan gebruik gemaakt worden van verschillende data-rates met elk hun eigen voordelen.  
-De antennes en daarmee de kastjes zijn aangesloten op het The Things Network (TTN). Deze ondersteunt standaard SF7 t/m SF12 (respectievelijk data rates 5 t/m 0). Hoe lager de data rate, hoe groter het bereik. SF7 en SF8 zijn gelimiteerd tot 235 bytes, SF9 tot 128 bytes, en SF10 t/m SF12 tot 51 bytes. Helaas is het niet toegestaan om hardcoded alleen gebruik te maken van SF11 en/of SF12; apparaten die dit gebruik worden pro-actief geblokkeerd. Hoe hoger de Spreading Factor, hoe groter het bereik en hoe meer airtime en stroom het kost om de berichten te versturen. [Achtergrondinformatie](https://www.thethingsnetwork.org/forum/t/fair-use-policy-explained/1300).  
-Voor het versturen van de LoRa berichten wordt gebruik gemaakt van een eigen decoder. De waarden worden verpakt in *integers* met een bepaalde precisie en gecodeerd tot kale bytes. Vervolgens draait op TTN een decoder die op dezelfde wijze de getallen terugberekend. In de huidige configuratie is het formaat van de berichten 16, 22 of 25 bytes afhankelijk van de actieve componenten. Een website waarop alle waarden uit te lezen zijn inclusief grafiekjes is een work-in-progress.
+Zodra een meetcyclus voltooid is gaat het kastje in *deepsleep* waarbij nagenoeg alle componenten uitgeschakeld zijn: alleen de drukknop aan de zijkant van het kastje wordt nog gemonitord. Wordt die knop ingedrukt, dan wordt het kastje wakker gemaakt en verricht een meting. Dit helpt bijvoorbeeld bij bepaalde opdrachten waarbij leerlingen vaker een meting willen / moeten doen dan het standaard-interval van 10 minuten.
+
+## LoRa en The Things Network
+De data van de kastjes wordt verzonden via het LoRa (Long Range) protocol. De kastjes fungeren als *end node* en communiceren met de antenne bovenop het Ichthus College en eventuele andere antennes in de omgeving (Scherpenzeel, Aalst, ..). Daarvoor kan gebruik gemaakt worden van verschillende data-rates met elk hun eigen voordelen.  
+De antennes en daarmee de kastjes zijn aangesloten op het The Things Network (TTN). Deze ondersteunt standaard SF7 t/m SF12 (respectievelijk data rates 5 t/m 0). Hoe lager de data rate, hoe groter het bereik. SF7 en SF8 zijn gelimiteerd tot 235 bytes per bericht, SF9 tot 128 bytes, en SF10 t/m SF12 tot 51 bytes. Helaas is het niet toegestaan om alleen gebruik te maken van SF11 en/of SF12; apparaten die dit verrichten worden pro-actief geblokkeerd. Hoe hoger de Spreading Factor, hoe groter het bereik en hoe meer airtime en stroom het kost om de berichten te versturen. [Achtergrondinformatie](https://www.thethingsnetwork.org/forum/t/fair-use-policy-explained/1300).  
+Voor het versturen van de LoRa berichten wordt gebruik gemaakt van een eigen decoder. De waarden worden verpakt in *integers* met een bepaalde precisie en gecodeerd tot kale bytes. Vervolgens draait op TTN een decoder die op dezelfde wijze de getallen terugberekend. De LoRa berichten van de kastjes zijn 20 bytes (of 30 bij GPS) in omvang. Deze worden gedecodeerd via de Payload Formatter op TTN, en daaruit doorgestuurd naar twee onafhankelijke opslaglocaties in beheer van het Ichthus College.
 
 ## Hardware
 Microcontroller: [Pycom LoPy4](https://pycom.io/product/lopy4/) op [Expansion Board v3(.1)](https://pycom.io/product/expansion-board-3-0/)  
@@ -44,15 +46,14 @@ Let op: versie 3.1 van dit breakout board verschilt op meer vlakken van v3.0 dan
 [Specs: much better](https://gitlab.com/rcolistete/micropython-samples/-/blob/master/Pycom/Using_Expansion_Board_en.md)  
 [Voltage divider: mess](https://community.hiveeyes.org/t/batterieuberwachung-voltage-divider-und-attenuation-fur-micropython-firmware/2128/46?page=2)  
 
-## Stroomgebruik en spanning
-***Verouderd: v2.0 i.t.t. huidige v2.7***  
-Zie de figuur hieronder voor het stroomgebruik van de vorige versie software. De gemiddelde stroomsterkte tijdens activiteit is 105 mA; in deepsleep 3.4 mA.  
-De vermoedde accuduur is drie weken, waarbij het zonnepaneel buiten beschouwing wordt gelaten.  
-![Stroomgebruik MJLO-12 op v19.01.22](Stroomgebruik_v19_01_22.png)
+## Stroomgebruik
+Zie de figuur hieronder voor het stroomgebruik van een kastje (zonder dat het zonnepaneeltje is aangesloten). De gemiddelde stroomsterkte tijdens een meting is 100 mA; in deepsleep een kleine 3 mA.  
+De accuduur is ongeveer drie weken, waarbij het zonnepaneel buiten beschouwing wordt gelaten.  
+![Stroomgebruik op FW v2.7.0](extras\Stroomgebruik_MJLO_v2_7_0.svg)
 
 ## Schema
 Zie de figuur voor de opbouw van het circuit in de sensorkastjes.
-![Schematic v2.7 15-04-2023](Schematic_Meet_je_leefomgeving_2023-04-15.svg)
+![Schematic v2.7 26-04-2023](extras\Schematic_MJLO_v2_7_0.svg)
 
 ## Custom firmware
 De eenvoudige variant voor het ontwikkelen van software is het uploaden van alle losse bestanden naar `/flash`. Bij het wijzigen van een bestand kan dat losse bestand snel gewijzigd en opnieuw geupload worden. Er zijn echter meerdere nadelen aan verbonden:
@@ -98,10 +99,8 @@ Om een `OrderedDict` toe te voegen:
 * `nano mpconfigport.h` -> regel 79 nieuwe regel: `#define MICROPY_PY_COLLECTIONS_ORDEREDDICT (1)`
 [bron](https://forum.pycom.io/topic/972/enable-ordereddict-support-by-default/5)
 
-De volgende regels zijn (elke keer) nodig om de firmware te compilen:
-* `make clean`
-* `make`
-* `make release`
+De volgende regel is (elke keer) nodig om de firmware te compilen:
+* `make clean && make && make release`
 
 Het resulterende `.tar.gz` bestand staat in de subfolder `/build`. Dit bestand kan gebruikt worden om de LoPy4 te flashen via de Pycom Firmware Updater. Om het `.bin` bestand te verkrijgen dat nodig is voor de OTA updates, moet de `.tar.gz` uitgepakt worden via bijvoorbeeld `tar -xzf filename`: het resulterende `lopy4.bin` is het gezochte bestand.
 

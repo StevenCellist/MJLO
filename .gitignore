@@ -1,10 +1,5 @@
-### Python ###
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-
-pymakr.conf
-
+.gitignore
 **secret.py
-software/update-mjlo-*
+software/update-*
+/device*
+calibration.py
